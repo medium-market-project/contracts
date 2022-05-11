@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.12;
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/math/SafeMath.sol";
+import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/utils/Counters.sol";
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/access/AccessControl.sol";
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/access/Ownable.sol";
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/security/Pausable.sol";
@@ -33,7 +34,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
     using SafeMath for uint;
     enum PayType { BUY_NOW, EVENT_APPLY }
     enum PayState { PAID, REFUNDED, CANCELLED, COMPLETED }
-    uint payIdxCounter = 0;
+    Counters.Counter private _payIdxCounter;
     struct PayReceipt {
         PayType payType;
         PayState payState;
@@ -72,7 +73,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         require(unitPrice.mul(amount) == msg.value, "transfered value must match the price");
         require(payoutAddresses.length > 0 && payoutAddresses.length == payoutRatios.length, "payout pair must match");
         receipt.payState = PayState.PAID;
-        receipt.payIdx = payIdxCounter;
+        receipt.payIdx = _payIdxCounter.current();
         receipt.itemId = itemId;
         receipt.unitPrice = unitPrice;
         receipt.amount = amount;
@@ -83,8 +84,8 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         receipt.payoutAddresses = payoutAddresses;
         receipt.payoutRatios = payoutRatios;
         receipt.timestamp = block.timestamp;
-        payBook[payIdxCounter] = receipt;
-        payIdxCounter.add(1);
+        payBook[_payIdxCounter.current()] = receipt;
+        _payIdxCounter.increment();
         emit Pay(receipt.payIdx, receipt.payType, receipt.itemId, receipt.buyer, receipt.unitPrice, receipt.amount);
         return receipt.payIdx;
     }
