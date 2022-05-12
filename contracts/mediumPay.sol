@@ -10,15 +10,11 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 
 contract MediumAccessControl is AccessControl {
     
-    bytes32 public constant SUPERVISOR_ROLE = keccak256("SUPERVISOR");
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN");
     
     constructor() {
-        _setupRole(SUPERVISOR_ROLE, _msgSender());
-        _setRoleAdmin(SUPERVISOR_ROLE, SUPERVISOR_ROLE);
-
-        _setupRole(ADMIN_ROLE, _msgSender());
-        _setRoleAdmin(ADMIN_ROLE, SUPERVISOR_ROLE);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(ADMIN_ROLE, msg.sender);
     }
 
     modifier onlyAdmin() {
