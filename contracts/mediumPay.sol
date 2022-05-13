@@ -55,8 +55,6 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         address nftContract;
         address seller;
         address buyer;
-        address [] payoutAddresses;
-        uint [] payoutRatios;
         uint timestamp;
         uint refundAmount;
     }
@@ -68,24 +66,23 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
     event Cancel(uint indexed payIdx, PayType payType, uint indexed itemId, address indexed buyer, uint unitPrice, uint amount, uint refundAmount);
     event Payout(uint indexed payIdx, PayType payType, uint indexed itemId, address indexed buyer, uint unitPrice, uint amount);
 
-    function payForBuyNow(uint itemId, address seller, address nftcontract, uint tokenId, uint unitPrice, uint amount, address [] memory payoutAddresses, uint[] memory payoutRatios) external payable whenNotPaused returns (uint) {
+    function payForBuyNow(uint itemId, address seller, address nftcontract, uint tokenId, uint unitPrice, uint amount) external payable whenNotPaused returns (uint) {
         PayReceipt memory receipt;
         receipt.payType = PayType.BUY_NOW;
         receipt.tokenId = tokenId;
         
-        return pay(receipt, itemId, seller, nftcontract, unitPrice, amount, payoutAddresses, payoutRatios);
+        return pay(receipt, itemId, seller, nftcontract, unitPrice, amount);
     }
 
-    function payForEventApply(uint eventId, address seller, address nftcontract, uint amount, uint unitPrice, address[] memory payoutAddresses, uint[] memory payoutRatios) external payable whenNotPaused returns (uint) {
+    function payForEventApply(uint eventId, address seller, address nftcontract, uint unitPrice, uint amount) external payable whenNotPaused returns (uint) {
         PayReceipt memory receipt;
         receipt.payType = PayType.EVENT_APPLY;
         
-        return pay(receipt, eventId, seller, nftcontract, unitPrice, amount, payoutAddresses, payoutRatios);
+        return pay(receipt, eventId, seller, nftcontract, unitPrice, amount);
     }
 
-    function pay(PayReceipt memory receipt, uint itemId, address seller, address nftcontract, uint unitPrice, uint amount, address[] memory payoutAddresses, uint[] memory payoutRatios) internal returns (uint) {
+    function pay(PayReceipt memory receipt, uint itemId, address seller, address nftcontract, uint unitPrice, uint amount) internal returns (uint) {
         require(unitPrice.mul(amount) == msg.value, "transfered value must match the price");
-        require(payoutAddresses.length > 0 && payoutAddresses.length == payoutRatios.length, "payout pair must match");
 
         receipt.payState = PayState.PAID;
         receipt.payIdx = _payIdxCounter.current();
@@ -96,8 +93,6 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         receipt.nftContract = nftcontract;
         receipt.seller = seller;
         receipt.buyer = msg.sender;
-        receipt.payoutAddresses = payoutAddresses;
-        receipt.payoutRatios = payoutRatios;
         receipt.timestamp = block.timestamp;
 
         payBook[_payIdxCounter.current()] = receipt;
@@ -129,21 +124,22 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         }
     }
 
-    function payout(uint payIdx) external onlyAdmin {
+    function payout(uint payIdx, address[] memory payoutAddresses, uint[] memory payoutRatios) external onlyAdmin {
         PayReceipt memory receipt = payBook[payIdx];
 
         require(receipt.payState == PayState.PAID || receipt.payState == PayState.REFUNDED, "payout is not allowed");
         require(receipt.amount > 0, "must be 0 < amount");
         require(address(this).balance >= receipt.unitPrice.mul(receipt.amount), "Depository balance is not enough to payout");
+        require(payoutAddresses.length > 0 && payoutAddresses.length == payoutRatios.length, "payout pair must match");
 
         uint totalPayment = receipt.unitPrice.mul(receipt.amount);
         uint payoutRatioSum = 0;
-        for (uint i = 0; i < receipt.payoutAddresses.length; i++) {
-            payoutRatioSum += receipt.payoutRatios[i];
+        for (uint i = 0; i < payoutAddresses.length; i++) {
+            payoutRatioSum += payoutRatios[i];
         }
-        for (uint i = 0; i < receipt.payoutAddresses.length; i++) {
-            if (receipt.payoutRatios[i] > 0) {
-                payable(receipt.payoutAddresses[i]).transfer(totalPayment.mul(receipt.payoutRatios[i].div(payoutRatioSum)));
+        for (uint i = 0; i < payoutAddresses.length; i++) {
+            if (payoutRatios[i] > 0) {
+                payable(payoutAddresses[i]).transfer(totalPayment.mul(payoutRatios[i].div(payoutRatioSum)));
             }
         }
 
@@ -151,4 +147,10 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
 
         emit Payout(receipt.payIdx, receipt.payType, receipt.itemId, receipt.buyer, receipt.unitPrice, receipt.amount);
     }
+    
+    function getReceipt(uint payIdx) external view returns (PayType, PayState, uint, uint, uint, uint, uint, address, address, address, uint, uint) {
+        PayReceipt memory receipt = payBook[payIdx];
+        return (receipt.payType, receipt.payState, receipt.payIdx, receipt.itemId, receipt.unitPrice, receipt.amount, receipt.tokenId, receipt.nftContract, receipt.seller, receipt.buyer, receipt.timestamp, receipt.refundAmount);
+    }
+
 }
