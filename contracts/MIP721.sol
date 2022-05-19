@@ -80,6 +80,26 @@ contract MIP721 is ERC721, ERC721Enumerable, ERC721URIStorage, Pausable, AccessC
             return new uint256[](0);
         }
     }
+    
+    function tokensWithUriOfOwner(address owner, uint256 startIdx, uint256 endIdx) public view returns (uint256[] memory tokenId, string[] memory uri) {
+        require(startIdx <= endIdx, "parameter endIdx must >= startIdx");
+        uint256 tokenCount = ERC721.balanceOf(owner);
+        if (tokenCount > 0 && tokenCount > startIdx) {
+            if (endIdx >= tokenCount) {
+                endIdx = tokenCount - 1;
+            }
+            uint returnCount = endIdx - startIdx + 1;
+            uint256[] memory tokenList = new uint256[](returnCount);
+            string[] memory uriList = new string[](returnCount);
+            for (uint256 i=startIdx; i < returnCount ; i++){
+                tokenList[i] = tokenOfOwnerByIndex(owner, i);
+                uriList[i] = tokenURI(tokenList[i]);
+            }
+            return (tokenList, uriList);
+        } else {
+            return (new uint256[](0), new string[](0));
+        }
+    }
 
     function _beforeTokenTransfer(address from, address to, uint256 tokenId) internal whenNotPaused override(ERC721, ERC721Enumerable) {
         super._beforeTokenTransfer(from, to, tokenId);
