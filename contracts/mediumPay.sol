@@ -48,7 +48,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         PayType payType;
         PayState payState;
         uint payIdx;
-        uint orderIdx;
+        uint itemId;
         uint unitPrice;
         uint amount;
         address nftContract;
@@ -60,31 +60,31 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
 
     mapping(uint => PayReceipt) payBook;
 
-    event Pay(uint indexed payIdx, PayType payType, uint indexed orderIdx, address indexed buyer, uint unitPrice, uint amount);
-    event Refund(uint indexed payIdx, PayType payType, uint indexed orderIdx, address indexed buyer, uint unitPrice, uint amount, uint refundAmount);
-    event Cancel(uint indexed payIdx, PayType payType, uint indexed orderIdx, address indexed buyer, uint unitPrice, uint amount, uint refundAmount);
-    event Payout(uint indexed payIdx, PayType payType, uint indexed orderIdx, address indexed buyer, uint unitPrice, uint amount);
+    event Pay(uint indexed payIdx, PayType payType, uint indexed itemId, address indexed buyer, uint unitPrice, uint amount);
+    event Refund(uint indexed payIdx, PayType payType, uint indexed itemId, address indexed buyer, uint unitPrice, uint amount, uint refundAmount);
+    event Cancel(uint indexed payIdx, PayType payType, uint indexed itemId, address indexed buyer, uint unitPrice, uint amount, uint refundAmount);
+    event Payout(uint indexed payIdx, PayType payType, uint indexed itemId, address indexed buyer, uint unitPrice, uint amount);
 
-    function payForBuyNow(uint orderIdx, address seller, address nftcontract, uint unitPrice, uint amount) external payable whenNotPaused returns (uint) {
+    function payForBuyNow(uint itemId, address seller, address nftcontract, uint unitPrice, uint amount) external payable whenNotPaused returns (uint) {
         PayReceipt memory receipt;
         receipt.payType = PayType.BUY_NOW;
         
-        return pay(receipt, orderIdx, seller, nftcontract, unitPrice, amount);
+        return pay(receipt, itemId, seller, nftcontract, unitPrice, amount);
     }
 
-    function payForEventApply(uint orderIdx, address seller, address nftcontract, uint unitPrice, uint amount) external payable whenNotPaused returns (uint) {
+    function payForEventApply(uint itemId, address seller, address nftcontract, uint unitPrice, uint amount) external payable whenNotPaused returns (uint) {
         PayReceipt memory receipt;
         receipt.payType = PayType.EVENT_APPLY;
         
-        return pay(receipt, orderIdx, seller, nftcontract, unitPrice, amount);
+        return pay(receipt, itemId, seller, nftcontract, unitPrice, amount);
     }
 
-    function pay(PayReceipt memory receipt, uint orderIdx, address seller, address nftcontract, uint unitPrice, uint amount) internal returns (uint) {
+    function pay(PayReceipt memory receipt, uint itemId, address seller, address nftcontract, uint unitPrice, uint amount) internal returns (uint) {
         require(unitPrice.mul(amount) == msg.value, "transfered value must match the price");
 
         receipt.payState = PayState.PAID;
         receipt.payIdx = _payIdxCounter.current();
-        receipt.orderIdx = orderIdx;
+        receipt.itemId = itemId;
         receipt.unitPrice = unitPrice;
         receipt.amount = amount;
         receipt.refundAmount = 0;
@@ -96,7 +96,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         payBook[_payIdxCounter.current()] = receipt;
         _payIdxCounter.increment();
 
-        emit Pay(receipt.payIdx, receipt.payType, receipt.orderIdx, receipt.buyer, receipt.unitPrice, receipt.amount);
+        emit Pay(receipt.payIdx, receipt.payType, receipt.itemId, receipt.buyer, receipt.unitPrice, receipt.amount);
 
         return receipt.payIdx;
     }
@@ -115,10 +115,10 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
 
         if (receipt.amount == 0) {
             receipt.payState = PayState.CANCELLED;
-            emit Cancel(receipt.payIdx, receipt.payType, receipt.orderIdx, receipt.buyer, receipt.unitPrice, receipt.amount, receipt.refundAmount);
+            emit Cancel(receipt.payIdx, receipt.payType, receipt.itemId, receipt.buyer, receipt.unitPrice, receipt.amount, receipt.refundAmount);
         } else {
             receipt.payState = PayState.REFUNDED;
-            emit Refund(receipt.payIdx, receipt.payType, receipt.orderIdx, receipt.buyer, receipt.unitPrice, receipt.amount, receipt.refundAmount);
+            emit Refund(receipt.payIdx, receipt.payType, receipt.itemId, receipt.buyer, receipt.unitPrice, receipt.amount, receipt.refundAmount);
         }
     }
 
@@ -142,13 +142,14 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         }
 
         receipt.payState = PayState.COMPLETED;
+        // paybook에 다시 안넣어서 상태값 변경이 안되는거 같은데 확인 필요.
 
-        emit Payout(receipt.payIdx, receipt.payType, receipt.orderIdx, receipt.buyer, receipt.unitPrice, receipt.amount);
+        emit Payout(receipt.payIdx, receipt.payType, receipt.itemId, receipt.buyer, receipt.unitPrice, receipt.amount);
     }
     
     function getReceipt(uint payIdx) external view returns (PayType, PayState, uint, uint, uint, uint, address, address, address, uint, uint) {
         PayReceipt memory receipt = payBook[payIdx];
-        return (receipt.payType, receipt.payState, receipt.payIdx, receipt.orderIdx, receipt.unitPrice, receipt.amount, receipt.nftContract, receipt.seller, receipt.buyer, receipt.timestamp, receipt.refundAmount);
+        return (receipt.payType, receipt.payState, receipt.payIdx, receipt.itemId, receipt.unitPrice, receipt.amount, receipt.nftContract, receipt.seller, receipt.buyer, receipt.timestamp, receipt.refundAmount);
     }
 
 }
