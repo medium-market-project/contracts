@@ -121,8 +121,21 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
 
         emit Pay(receipt.payIdx, receipt.payType, receipt.marketKey, receipt.buyer, receipt.unitPrice, receipt.amount);
     }
-
+    
     function refund(address buyer, uint marketKey, uint amount) external onlyAdmin {
+        _refund(buyer, marketKey, amount);
+    }
+
+    function payout(address buyer, uint marketKey, address[] memory payoutAddresses, uint[] memory payoutRatios) external onlyAdmin {
+        _payout(buyer, marketKey, payoutAddresses, payoutRatios);
+    }
+
+    function refundAndPayout(address buyer, uint marketKey, uint refundAmount, address[] memory payoutAddresses, uint[] memory payoutRatios) external onlyAdmin {
+        _refund(buyer, marketKey, refundAmount);
+        _payout(buyer, marketKey, payoutAddresses, payoutRatios);
+    }
+
+    function _refund(address buyer, uint marketKey, uint amount) internal {
         PayReceipt memory receipt = payBook[buyer][marketKey];
         
         require(receipt.marketKey > 0, "no receipt found");
@@ -146,7 +159,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         }
     }
 
-    function payout(address buyer, uint marketKey, address[] memory payoutAddresses, uint[] memory payoutRatios) external onlyAdmin {
+    function _payout(address buyer, uint marketKey, address[] memory payoutAddresses, uint[] memory payoutRatios) internal {
         PayReceipt memory receipt = payBook[buyer][marketKey];
 
         require(receipt.marketKey > 0, "no receipt found");
@@ -170,7 +183,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         payBook[buyer][marketKey] = receipt;
         emit Payout(receipt.payIdx, receipt.payType, receipt.marketKey, receipt.buyer, receipt.unitPrice, receipt.amount);
     }
-    
+
     function getReceipt(address buyer, uint marketKey) external view returns (PayType, PayState, uint, uint, uint, uint, address, address, address, uint, uint) {
         PayReceipt memory receipt = payBook[buyer][marketKey];
         
