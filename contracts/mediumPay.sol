@@ -48,7 +48,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         PayType payType;
         PayState payState;
         uint payIdx;
-        uint orderNum;
+        uint marketKey;
         uint unitPrice;
         uint amount;
         address nftContract;
@@ -58,33 +58,22 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         uint refundAmount;
     }
 
-    mapping(uint => PayReceipt) payBook;
+    mapping(address => mapping(uint => PayReceipt)) payBook;
 
-    event Pay(uint indexed payIdx, PayType payType, uint indexed orderNum, address indexed buyer, uint unitPrice, uint amount);
-    event Refund(uint indexed payIdx, PayType payType, uint indexed orderNum, address indexed buyer, uint unitPrice, uint amount, uint refundAmount);
-    event Cancel(uint indexed payIdx, PayType payType, uint indexed orderNum, address indexed buyer, uint unitPrice, uint amount, uint refundAmount);
-    event Payout(uint indexed payIdx, PayType payType, uint indexed orderNum, address indexed buyer, uint unitPrice, uint amount);
+    event Pay(uint payIdx, PayType payType, uint indexed marketKey, address indexed buyer, uint unitPrice, uint amount);
+    event Refund(uint payIdx, PayType payType, uint indexed marketKey, address indexed buyer, uint unitPrice, uint amount, uint refundAmount);
+    event Cancel(uint payIdx, PayType payType, uint indexed marketKey, address indexed buyer, uint unitPrice, uint amount, uint refundAmount);
+    event Payout(uint payIdx, PayType payType, uint indexed marketKey, address indexed buyer, uint unitPrice, uint amount);
 
-    function payForBuyNow(uint orderNum, address seller, address nftcontract, uint unitPrice, uint amount) external payable whenNotPaused returns (uint) {
-        PayReceipt memory receipt;
-        receipt.payType = PayType.BUY_NOW;
+    function payForBuyNow(uint orderNum, address seller, address nftcontract, uint unitPrice, uint amount) external payable whenNotPaused {
         
-        return pay(receipt, orderNum, seller, nftcontract, unitPrice, amount);
-    }
-
-    function payForEventApply(uint orderNum, address seller, address nftcontract, uint unitPrice, uint amount) external payable whenNotPaused returns (uint) {
-        PayReceipt memory receipt;
-        receipt.payType = PayType.EVENT_APPLY;
-        
-        return pay(receipt, orderNum, seller, nftcontract, unitPrice, amount);
-    }
-
-    function pay(PayReceipt memory receipt, uint orderNum, address seller, address nftcontract, uint unitPrice, uint amount) internal returns (uint) {
         require(unitPrice.mul(amount) == msg.value, "transfered value must match the price");
 
+        PayReceipt memory receipt;
+        receipt.payType = PayType.BUY_NOW;
         receipt.payState = PayState.PAID;
         receipt.payIdx = _payIdxCounter.current();
-        receipt.orderNum = orderNum;
+        receipt.marketKey = orderNum;
         receipt.unitPrice = unitPrice;
         receipt.amount = amount;
         receipt.refundAmount = 0;
@@ -93,17 +82,50 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         receipt.buyer = msg.sender;
         receipt.timestamp = block.timestamp;
 
-        payBook[_payIdxCounter.current()] = receipt;
+        payBook[receipt.buyer][receipt.marketKey] = receipt;
+        
         _payIdxCounter.increment();
 
-        emit Pay(receipt.payIdx, receipt.payType, receipt.orderNum, receipt.buyer, receipt.unitPrice, receipt.amount);
-
-        return receipt.payIdx;
+        emit Pay(receipt.payIdx, receipt.payType, receipt.marketKey, receipt.buyer, receipt.unitPrice, receipt.amount);
     }
 
-    function refund(uint payIdx, uint amount) external onlyAdmin {
-        PayReceipt memory receipt = payBook[payIdx];
+    function payForEventApply(uint eventItemNum, address seller, address nftcontract, uint unitPrice, uint amount) external payable whenNotPaused {
+        require(unitPrice.mul(amount) == msg.value, "transfered value must match the price");
+
+        PayReceipt memory receipt = payBook[msg.sender][eventItemNum];
+        if (receipt.marketKey > 0) {
+            require(receipt.payState == PayState.PAID, "PayState is not PAID.");
+            require(receipt.marketKey == eventItemNum, "MarketKey is not match.");
+            require(receipt.unitPrice == unitPrice, "UnitPrice is not match.");
+            
+            receipt.amount += amount;
+
+            payBook[receipt.buyer][receipt.marketKey] = receipt;
+        } else {
+            receipt.payType = PayType.EVENT_APPLY;
+            receipt.payState = PayState.PAID;
+            receipt.payIdx = _payIdxCounter.current();
+            receipt.marketKey = eventItemNum;
+            receipt.unitPrice = unitPrice;
+            receipt.amount = amount;
+            receipt.refundAmount = 0;
+            receipt.nftContract = nftcontract;
+            receipt.seller = seller;
+            receipt.buyer = msg.sender;
+            receipt.timestamp = block.timestamp;
+
+            payBook[receipt.buyer][receipt.marketKey] = receipt;
+
+            _payIdxCounter.increment();
+        }
+
+        emit Pay(receipt.payIdx, receipt.payType, receipt.marketKey, receipt.buyer, receipt.unitPrice, receipt.amount);
+    }
+
+    function refund(address buyer, uint marketKey, uint amount) external onlyAdmin {
+        PayReceipt memory receipt = payBook[buyer][marketKey];
         
+        require(receipt.marketKey > 0, "no receipt found");
         require(receipt.payState == PayState.PAID, "refund is not allowed");
         require(amount > 0 && receipt.amount <= amount, "must be 0 < refund amount <= paid amount ");
         require(address(this).balance >= receipt.unitPrice.mul(amount), "Depository balance is not enough to refund");
@@ -115,18 +137,19 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
 
         if (receipt.amount == 0) {
             receipt.payState = PayState.CANCELLED;
-            payBook[payIdx] = receipt;
-            emit Cancel(receipt.payIdx, receipt.payType, receipt.orderNum, receipt.buyer, receipt.unitPrice, receipt.amount, receipt.refundAmount);
+            payBook[buyer][marketKey] = receipt;
+            emit Cancel(receipt.payIdx, receipt.payType, receipt.marketKey, receipt.buyer, receipt.unitPrice, receipt.amount, receipt.refundAmount);
         } else {
             receipt.payState = PayState.REFUNDED;
-            payBook[payIdx] = receipt;
-            emit Refund(receipt.payIdx, receipt.payType, receipt.orderNum, receipt.buyer, receipt.unitPrice, receipt.amount, receipt.refundAmount);
+            payBook[buyer][marketKey] = receipt;
+            emit Refund(receipt.payIdx, receipt.payType, receipt.marketKey, receipt.buyer, receipt.unitPrice, receipt.amount, receipt.refundAmount);
         }
     }
 
-    function payout(uint payIdx, address[] memory payoutAddresses, uint[] memory payoutRatios) external onlyAdmin {
-        PayReceipt memory receipt = payBook[payIdx];
+    function payout(address buyer, uint marketKey, address[] memory payoutAddresses, uint[] memory payoutRatios) external onlyAdmin {
+        PayReceipt memory receipt = payBook[buyer][marketKey];
 
+        require(receipt.marketKey > 0, "no receipt found");
         require(receipt.payState == PayState.PAID || receipt.payState == PayState.REFUNDED, "payout is not allowed");
         require(receipt.amount > 0, "must be 0 < amount");
         require(address(this).balance >= receipt.unitPrice.mul(receipt.amount), "Depository balance is not enough to payout");
@@ -144,13 +167,16 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         }
 
         receipt.payState = PayState.COMPLETED;
-        payBook[payIdx] = receipt;
-        emit Payout(receipt.payIdx, receipt.payType, receipt.orderNum, receipt.buyer, receipt.unitPrice, receipt.amount);
+        payBook[buyer][marketKey] = receipt;
+        emit Payout(receipt.payIdx, receipt.payType, receipt.marketKey, receipt.buyer, receipt.unitPrice, receipt.amount);
     }
     
-    function getReceipt(uint payIdx) external view returns (PayType, PayState, uint, uint, uint, uint, address, address, address, uint, uint) {
-        PayReceipt memory receipt = payBook[payIdx];
-        return (receipt.payType, receipt.payState, receipt.payIdx, receipt.orderNum, receipt.unitPrice, receipt.amount, receipt.nftContract, receipt.seller, receipt.buyer, receipt.timestamp, receipt.refundAmount);
+    function getReceipt(address buyer, uint marketKey) external view returns (PayType, PayState, uint, uint, uint, uint, address, address, address, uint, uint) {
+        PayReceipt memory receipt = payBook[buyer][marketKey];
+        
+        require(receipt.marketKey > 0, "no receipt found");
+        
+        return (receipt.payType, receipt.payState, receipt.payIdx, receipt.marketKey, receipt.unitPrice, receipt.amount, receipt.nftContract, receipt.seller, receipt.buyer, receipt.timestamp, receipt.refundAmount);
     }
 
 }
