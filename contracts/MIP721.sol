@@ -19,6 +19,9 @@ contract MIP721 is ERC721, ERC721Enumerable, ERC721URIStorage, Pausable, AccessC
 
     string private _baseTokenURI;
 
+    event BulkMint(address indexed to, uint256 uriCount, string[] uris, uint256[] tokenIds);
+    event BulkTransfer(address indexed from, address indexed to, uint256 tokenCount, uint256[] tokenIds);
+
     constructor(
         string memory name,
         string memory symbol,
@@ -51,6 +54,36 @@ contract MIP721 is ERC721, ERC721Enumerable, ERC721URIStorage, Pausable, AccessC
         _tokenIdCounter.increment();
         _safeMint(to, tokenId);
         _setTokenURI(tokenId, uri);
+    }
+
+    function bulkMint(address to, string[] memory uris) public onlyRole(ADMIN_ROLE) {
+        uint256[] memory tokenIds = new uint256[](uris.length);
+        for (uint i = 0; i < uris.length; i++) {
+            tokenIds[i] = _tokenIdCounter.current();
+            mint(to, uris[i]);
+        }
+        emit BulkMint(to, uris.length, uris, tokenIds);
+    }
+
+    function bulkTransferFrom(address from, address to, uint256[] memory tokenIds) external {
+        for (uint i = 0; i < tokenIds.length; i++) {
+            transferFrom(from, to, tokenIds[i]);
+        }
+        emit BulkTransfer(from, to, tokenIds.length, tokenIds);
+    }
+
+    function safeBulkTransferFrom(address from, address to, uint256[] memory tokenIds, bytes memory data) external {
+        for (uint i = 0; i < tokenIds.length; i++) {
+            safeTransferFrom(from, to, tokenIds[i], data);
+        }
+        emit BulkTransfer(from, to, tokenIds.length, tokenIds);
+    }
+
+    function safeBulkTransferFrom(address from, address to, uint256[] memory tokenIds) external {
+        for (uint i = 0; i < tokenIds.length; i++) {
+            safeTransferFrom(from, to, tokenIds[i], "");
+        }
+        emit BulkTransfer(from, to, tokenIds.length, tokenIds);
     }
 
     function snapshot(uint256 _id, uint256 _hash) public override onlyRole(ADMIN_ROLE) {
