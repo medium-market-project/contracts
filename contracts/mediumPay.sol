@@ -136,7 +136,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         PayReceipt memory receipt = payBook[buyer][marketKey];
         require(receipt.marketKey > 0, "no receipt found");
 
-        emit RefundAndPayout(receipt.payIdx, receipt.marketKey, receipt.buyer, receipt.payType, receipt.unitPrice, receipt.refundAmount, receipt.payoutAmount, payoutAddresses, payoutValues);
+        emit RefundAndPayout(receipt.payIdx, receipt.marketKey, receipt.buyer, receipt.payType, receipt.unitPrice, refundAmount, payoutAmount, payoutAddresses, payoutValues);
     }
 
     function _refund(address buyer, uint marketKey, uint refundAmount) internal {
