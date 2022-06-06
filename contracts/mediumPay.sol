@@ -63,6 +63,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
     event Refund(uint indexed payIdx, uint indexed marketKey, address indexed buyer, PayType payType, uint unitPrice, uint refundAmount);
     event Payout(uint indexed payIdx, uint indexed marketKey, address indexed buyer, PayType payType, uint unitPrice, uint payoutAmount, address[] payoutAddresses, uint[] payout);
     event RefundAndPayout(uint indexed payIdx, uint indexed marketKey, address indexed buyer, PayType payType, uint unitPrice, uint refundAmount, uint payoutAmount, address[] payoutAddresses, uint[] payout);
+    event DebugPayout();
 
 
     function payForBuyNow(uint orderNum, address seller, address nftcontract, uint unitPrice, uint buyAmount) external payable whenNotPaused {
@@ -148,7 +149,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
         
         if (refundAmount > 0) {
             payable(receipt.buyer).transfer(receipt.unitPrice.mul(refundAmount));
-            receipt.refundAmount.add(refundAmount);
+            receipt.refundAmount += refundAmount;
             payBook[buyer][marketKey] = receipt;
         }
 
@@ -172,7 +173,7 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
             }
             for (uint i = 0; i < payoutAddresses.length; i++) {
                 if (payoutRatios[i] > 0) {
-                    uint payoutVal = totalPayment.mul(payoutRatios[i].div(payoutRatioSum));
+                    uint payoutVal = totalPayment.mul(payoutRatios[i]).div(payoutRatioSum);
                     payoutValues[i] = payoutVal;
                     payable(payoutAddresses[i]).transfer(payoutVal);
                 } else {
