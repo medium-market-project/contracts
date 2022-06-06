@@ -175,6 +175,8 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
                     uint payoutVal = totalPayment.mul(payoutRatios[i].div(payoutRatioSum));
                     payoutValues[i] = payoutVal;
                     payable(payoutAddresses[i]).transfer(payoutVal);
+                } else {
+                    payoutValues[i] = 0;
                 }
             }
 
