@@ -49,13 +49,14 @@ contract MIP721 is ERC721, ERC721Enumerable, ERC721URIStorage, Pausable, AccessC
         _unpause();
     }
 
-    function mint(address to, string memory uri) public onlyRole(ADMIN_ROLE) {
+    function mint(address to, string memory uri) public onlyRole(ADMIN_ROLE) returns (uint256) {
         uint256 tokenId = _tokenIdCounter.current();
         _tokenIdCounter.increment();
         _safeMint(to, tokenId);
         _setTokenURI(tokenId, uri);
+        return tokenId;
     }
-
+    
     function bulkMint(address to, string[] memory uris) public onlyRole(ADMIN_ROLE) {
         uint256[] memory tokenIds = new uint256[](uris.length);
         for (uint i = 0; i < uris.length; i++) {
