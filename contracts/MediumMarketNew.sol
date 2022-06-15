@@ -149,25 +149,17 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         _closeSale(marketKey);
     }
 
-    function buy(uint marketKey, uint price) external payable whenNotPaused {
+    function buy(uint marketKey, uint price, uint metaHash) external payable whenNotPaused {
         // 구매자가 호출. 구매자가 수수료 부담. 레이지민트일 경우 민팅 비용까지도 구매자가 부담. 판매자도 구매 가능
 
         SaleDocument memory doc = _salesBook[marketKey];
         require (doc.onSale, "market key : not on sale");
         require (doc.startTime <= block.timestamp && block.timestamp <= doc.endTime, "not on sale time");
         require (doc.buyNowPrice == price && price == msg.value, "transfered value must match the price");
+        require (doc.metaHash == metaHash, "meta hash changed");
 
-        if (doc.metaHash > 0) {
-            if (!doc.isLazyMint) {
-                if (_checkNFTSnapshot(doc.nftContract, doc.tokenId, doc.metaHash) == false) {
-                    // 해시값이 틀리면 판매등록을 강제 취소처리?
-                    forceCloseSale(marketKey);
-                } else {
-                    _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
-                }
-            } else {
-                // 메타해시가 있는데.. 레이지민트인 경우 무시?
-            }
+        if (doc.metaHash > 0 && !doc.isLazyMint) {
+            _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
         }
 
         if (doc.isLazyMint) {
@@ -179,7 +171,7 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         _payout(price, doc.payoutAddresses, doc.payoutRatios);
     }
 
-    function bid(uint marketKey, uint price) external payable whenNotPaused {
+    function bid(uint marketKey, uint price, uint metaHash) external payable whenNotPaused {
         // 입찰자가 호출. 입찰자가 수수료 부담. 레이지민트일 경우 민팅 비용까지도 구매자가 부담.
         // 판매자도 입찰 가능
 
@@ -187,6 +179,7 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         require (doc.onSale, "market key : not on sale");
         require (doc.startTime <= block.timestamp && block.timestamp <= doc.endTime, "not on sale time");
         require (price == msg.value, "transfered value must match the price");
+        require (doc.metaHash == metaHash, "meta hash changed");
 
         if (doc.bidder == address(0)) {
             require (doc.startPrice <= price, "transfered value must be equal or greater than the start price");
@@ -205,31 +198,23 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         // 메타해시 체크를 매 비드마다 체크할것인가? 체크할거라면 여기서도 해야함.
 
         if (doc.buyNowPrice > 0 && doc.buyNowPrice <= price) {
-            acceptBid(doc.marketKey);
+            acceptBid(doc.marketKey, metaHash);
         }
     }
 
-    function acceptBid(uint marketKey) public onlyAdmin {
+    function acceptBid(uint marketKey, uint metaHash) public onlyAdmin {
         // 마켓시스템 호출. 시간이 되면 자동으로 낙찰처리. 또는 경매에서 즉시구매가가 되었을때 실행.
 
         SaleDocument memory doc = _salesBook[marketKey];
         require (doc.onSale, "market key : not on sale");
         require (doc.saleType == SaleType.AUCTION, "not auction type");
+        require (doc.metaHash == metaHash, "meta hash changed");
+
+        if (doc.metaHash > 0 && !doc.isLazyMint) {
+            _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
+        }
 
         if (doc.bidder != address(0)) {
-            if (doc.metaHash > 0) {
-                if (!doc.isLazyMint) {
-                    if (_checkNFTSnapshot(doc.nftContract, doc.tokenId, doc.metaHash) == false) {
-                        // 해시값이 틀리면 판매등록을 강제 취소처리?
-                        forceCloseSale(marketKey);
-                    } else {
-                        _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
-                    }
-                } else {
-                    // 메타해시가 있는데.. 레이지민트인 경우 무시?
-                }
-            }
-
             if (doc.isLazyMint) {
                 // 바로 구매자에게 민팅해서 보낼때.. 만약 판매자에게로 민팅하고 다시 구매자에게 보내는 방식으로 하려면 변경 필요
                 doc.tokenId = _callNFTMint(doc.nftContract, doc.bidder, doc.metaUri);
@@ -239,7 +224,6 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
 
             _payout(doc.bidPrice, doc.payoutAddresses, doc.payoutRatios);
         }
-        
     }
 
     function _createSale(SaleDocument memory doc) internal {
@@ -333,10 +317,5 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
     function _callNFTRemoveSnapsot(address nftContract, uint tokenId) internal {
         MIP721 mip721 = MIP721(nftContract);
         mip721.removeSnapshot(tokenId);
-    }
-
-    function _checkNFTSnapshot(address nftContract, uint tokenId, uint metaHash) internal returns (bool) {
-        MIP721 mip721 = MIP721(nftContract);
-        return (metaHash == mip721.snapshotOf(tokenId));
     }
 }
