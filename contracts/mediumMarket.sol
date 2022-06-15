@@ -4,521 +4,311 @@ pragma solidity 0.8.12;
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/security/PullPayment.sol";
+import "./MIP721.sol";
+import "./MediumAccessControl.sol";
+import "./MediumPausable.sol";
 
-interface IERC721Creator is IERC721 {
-    function tokenCreator(uint256 _tokenId) external view returns (address payable);
-}
-
-interface ITxProxy {
-    function sendMoney(address payable _to) external payable;
-}
-
-contract TxProxy is ITxProxy {
-    function sendMoney(address payable _to) external payable {
-        _to.transfer(msg.value);
-    }
-}
-
-contract MaybeSendMoney {
-    TxProxy proxy;
-
-    constructor() {
-        proxy = new TxProxy();
-    }
-
-    function maybeSendMoney(address payable _to, uint256 _value) internal returns (bool) {
-        (bool success,) = address(proxy).call{value:_value}( abi.encodeWithSignature("sendMoney(address)", _to));
-        return success;
-    }
-}
-
-contract SendMoneyOrEscrow is Ownable, MaybeSendMoney, PullPayment {
-    function sendMoneyOrEscrow(address payable _to, uint256 _value) internal {
-        bool successfulTransfer = maybeSendMoney(_to, _value);
-        if (!successfulTransfer) {
-            _asyncTransfer(_to, _value);
-        }
-    }
-}
-
-contract Marketplace is Ownable, SendMoneyOrEscrow {
-    using SafeMath for uint256;
-
-    struct ActiveBid {
-        bytes32 a_id;
-        bytes32 b_id;
-        address payable bidder;
-        uint256 marketplaceFee;
-        uint256 price;
-        uint256 startingAt;
-        uint256 expiredAt;
-    }
-
-    struct Auction {
-        uint256 saleType;
-        bytes32 a_id;
-        address payable seller;
-        address creator;
-        address partner;
-        uint256 price;
-        uint256 endingPrice;
-        uint256 startingAt;        
-        uint256 expiredAt;
-        AuctionStatus status;
-    }
-
-    struct RoyaltySettings {
-        IERC721Creator iErc721CreatorContract;
-        uint256 percentage;
-    }
-
-    uint256 private marketplaceFeePercentage;
-    uint256 private partnerFeePercentage;
-    uint256 private creatorFeePercentage;
+contract MediumMarket is MediumAccessControl, MediumPausable {
     
-    uint256 private constant AUCTION    = 1;
-    uint256 private constant BUYNOW     = 2;
+    using SafeMath for uint;
 
-    uint256 constant maximumPercentage = 1000;
-    uint256 public constant maximumMarketValue = 2**255;
-    uint256 public minimumBidIncreasePercentage = 10; // 1% -- 100 = 10%
+    enum SaleType { BUY_NOW, AUCTION }
 
-    // MarketplaceSettings public marketplaceFeeSet = MarketplaceSettings(0, 25);
+    struct SaleDocument {
+        SaleType saleType;      // 즉시구매 / 경매
+        uint marketKey;         // 서비스에서 생성한 판매 키
+        address seller;         // 판매자
+        address nftContract;    // 판매 NFT컨트랙트
+        bool isLazyMint;        // lazy mint 여부
+        string metaUri;             // lazy mint 일때 토큰 uri
+        uint tokenId;           // 판매 토큰 아이디 (lazy mint일 경우 값이 없다)
+        uint collectionKey;     // 서비스에서 생성한 컬렉션 키
+        address originator;     // 원작자
+        uint startPrice;        // 판매 시작가 (즉시구매 타입일 경우 판매 시작가는 즉시 구매가와 동일하게 셋팅. 경매 타입일 경우 입찰 시작가)
+        uint buyNowPrice;       // 즉시 구매가 (즉시구매 타입일 경우 판매가. 경매 타입일 경우 0x0이면 즉시구매가 없음을 의미)
+        address bidder;         // 현재 입찰자
+        uint bidPrice;          // 현재 입찰가
+        uint bidCount;          // 현재까지의 입찰 수
+        uint startTime;         // 판매/경매 시작 시간
+        uint endTime;           // 판매/경매 종료 시간
+        uint metaHash;          // meta file hash. 판매 등록 시점의 메타파일과 판매 완료 시점의 메타파일의 동일성을 제공할 필요가 있는 경우 사용. 사용하지 않을때는 0으로.
+        bool onSale;            // 판매 도큐먼트의 유효 플랙. 종결시 delete가 기준이나 예외 경우를 위한 보조 필드.
 
-    enum AuctionStatus {
-        Live,
-        Closed,
-        Canceled
+        address[] payoutAddresses;  // ex; [seller, orginator, market]
+        uint[] payoutRatios;        // ex; [850(85%), 50(5%), 100(10%)]
+        uint minBidIncrPercent;     // ex; 50(5%)
     }
 
-    mapping(address => uint8) private primarySaleFees;
-    mapping(address => mapping(uint256 => Auction)) private tokenPrices;
-    mapping(address => mapping(uint256 => bool)) private soldTokens;
-    mapping(address => mapping(uint256 => ActiveBid)) private tokenCurrentBids;
-    mapping(address => RoyaltySettings) private contractRoyaltySettings;
-    mapping(address => uint256) private contractPrimarySaleFee;
-    mapping(address => mapping(uint256 => uint256)) private tokenRoyaltyPercentage;
-    mapping(address => uint256) private creatorRoyaltyPercentage;
-    mapping(address => uint256) private contractRoyaltyPercentage;
+    mapping(uint => SaleDocument) _salesBook;   // 판매 대기 또는 판매중인 판매정보 목록. 판매 완료되거나 판매 기간 종료시 삭제.
+
+    event CreateSale(SaleType saleType, uint indexed marketKey, address indexed seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, uint startPrice, uint buyNowPrice, uint startTime, uint endTime);
+    event Buy(SaleType saleType, uint indexed marketKey, address indexed buyer, address indexed nftContract, address seller, uint tokenId, uint collectionKey, address originator, uint price);
+    event Bid(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address indexed bidder, uint bidPrice, uint bidCount);
+    event AcceptBid(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, uint tokenId, uint collectionKey, address originator, address indexed bidder, uint bidPrice, uint bidCount);
+    event CancelSale(SaleType saleType, uint indexed marketKey, address indexed seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator);
+    event ForceCloseSale(SaleType saleType, uint indexed marketKey, address indexed seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, address bidder, uint bidPrice, uint bidCount);
+    event Refund(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, address indexed bidder, uint bidPrice);
+    event Payout(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, uint tokenId, uint collectionKey, address originator, uint price, address[] payoutAddresses, uint[] payoutRatios, uint[] payoutValues);
 
 
-    event Sold(
-        uint256 _type,
-        bytes32 _a_id,
-        address indexed _tokenAddress,
-        address indexed _buyer,
-        address indexed _seller,
-        uint256 _amount,
-        uint256 _tokenId
-        // uint256 _startingAt,
-        // uint256 _expiredAt
-    );
+    //uint[] buyNowSaleInfo = [isLazyMint, tokenId, collectionKey, buyNowPrice, startTime, endTime, metaHash];
+    function createBuyNow(uint marketKey, address seller, address nftContract, address originator, uint[7] calldata buyNowSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused onlyAdmin {
+        // 마켓에서의 호출을 기준으로 함
+        
+        SaleDocument memory doc;
+        doc.saleType = SaleType.AUCTION;
+        doc.marketKey = marketKey;
+        doc.seller = seller;
+        doc.nftContract = nftContract;
+        doc.originator = originator;
+        doc.isLazyMint = buyNowSaleInfo[0] != 0;
+        doc.tokenId = buyNowSaleInfo[1];
+        doc.collectionKey = buyNowSaleInfo[2];
+        doc.startPrice = buyNowSaleInfo[3];
+        doc.buyNowPrice = buyNowSaleInfo[3];
+        doc.startTime = (buyNowSaleInfo[4] > block.timestamp ? buyNowSaleInfo[4] : block.timestamp);
+        doc.endTime = buyNowSaleInfo[5];
+        doc.metaHash = buyNowSaleInfo[6];
+        doc.metaUri = metaUri;
+        doc.payoutAddresses = payoutAddresses;
+        doc.payoutRatios = payoutRatios;
 
-    event CreateOrder(
-        uint256 _type,
-        bytes32 _a_id,
-        address indexed _seller,
-        address indexed _tokenAddress,
-        uint256 _startingPrice,
-        uint256 _tokenId,
-        uint256 _startingAt,
-        uint256 _expiredAt
-    );
-
-    event Bid(
-        bytes32 _a_id,
-        bytes32 _b_id,
-        address indexed _seller,
-        uint256 _startPrice,
-        address indexed _tokenAddress,
-        address indexed _bidder,
-        uint256 _amount,
-        uint256 _tokenId
-    );
-
-    event AcceptBid(
-        bytes32 _a_id,
-        bytes32 _b_id,
-        address indexed _seller,
-        uint256 _startPrice,
-        address indexed _tokenAddress,
-        address indexed _bidder,
-        uint256 _amount,
-        uint256 _tokenId
-        // uint256 _expiredAt
-    );
-
-    event CancelBid(
-        bytes32 _a_id,
-        bytes32 _b_id,
-        address indexed _seller,
-        uint256 _startPrice,
-        address indexed _tokenAddress,
-        address indexed _bidder,
-        uint256 _amount,
-        uint256 _tokenId
-        // uint256 _expiredAt
-    );
-
-
-    // event CancelOrder(
-    //     bytes32 _a_id,
-    //     address indexed _tokenAddress,
-    //     uint256 _tokenId
-    // );
-
-    event CancelOrder(
-        uint256 _type,
-        bytes32 _a_id,
-        address indexed _seller,
-        address indexed _tokenAddress,
-        uint256 _amount,
-        uint256 _tokenId
-        // uint256 _expiredAt
-    );    
-
-    event ForceClose(
-        uint256 _type,
-        bytes32 _a_id,
-        address indexed _seller,
-        address indexed _tokenAddress,
-        uint256 _amount,
-        uint256 _tokenId
-        // uint256 _expiredAt
-    );    
-
-
-    event RoyaltySettingsSet(
-        address indexed _erc721CreatorContract,
-        uint256 _percentage
-    );
-
-    event PrimarySalePercentageSet(
-        address indexed _tokenAddress,
-        uint256 _percentage
-    );
-
-    address private maintainer;
-
-    constructor(address _maintainer) {
-        maintainer = _maintainer;
-        partnerFeePercentage = 300; // 30% partner fee on all txs.
-        marketplaceFeePercentage = 100; // 10% marketplace fee on all txs.
-        creatorFeePercentage = 600; // 60% creator calc price.
+        _createSale(doc);
     }
 
-    function getPartnerFeePercentage() public view returns (uint256) {
-        return partnerFeePercentage;
+    //uint[] auctionSaleInfo = [isLazyMint, tokenId, collectionKey, startPrice, buyNowPrice, startTime, endTime, minBidIncrPercent, metaHash];
+    function createAuction(uint marketKey, address seller, address nftContract,address originator, uint[9] calldata auctionSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused onlyAdmin {
+        // 마켓에서의 호출을 기준으로 함
+
+        SaleDocument memory doc;
+        doc.saleType = SaleType.AUCTION;
+        doc.marketKey = marketKey;
+        doc.seller = seller;
+        doc.nftContract = nftContract;
+        doc.originator = originator;
+        doc.isLazyMint = auctionSaleInfo[0] != 0;
+        doc.tokenId = auctionSaleInfo[1];
+        doc.collectionKey = auctionSaleInfo[2];
+        doc.startPrice = auctionSaleInfo[3];
+        doc.buyNowPrice = auctionSaleInfo[4];
+        doc.startTime = (auctionSaleInfo[5] > block.timestamp ? auctionSaleInfo[5] : block.timestamp);
+        doc.endTime = auctionSaleInfo[6];
+        doc.minBidIncrPercent = auctionSaleInfo[7];
+        doc.metaHash = auctionSaleInfo[8];
+        doc.metaUri = metaUri;
+        doc.payoutAddresses = payoutAddresses;
+        doc.payoutRatios = payoutRatios;
+
+        _createSale(doc);
     }
 
-    function setPartnerFeePercentage(uint256 _percentage) public onlyOwner {
-        require( _percentage <= 100, "setPartnerFeePercentage::_percentage must be <= 100");
-        partnerFeePercentage = _percentage * 10;
-    }
- 
-    function getMarketplaceFeePercentage() public view returns (uint256) {
-        return marketplaceFeePercentage;
+    function cancelSale(uint marketKey) external {
+        // 판매자가 호출. 입찰자가 있는 상태에서는 불가능
+        SaleDocument memory doc = _salesBook[marketKey];
+        require (doc.onSale, "market key : not on sale");
+        require (block.timestamp <= doc.endTime, "not on sale time");
+        require (doc.seller == msg.sender, "only seller can cancel");
+        require (doc.bidder == address(0), "bid exist");
+
+        emit CancelSale(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator);
+
+        _closeSale(marketKey);
     }
 
-    function setMarketplaceFeePercentage(uint256 _percentage) public onlyOwner {
-        require( _percentage <= 100, "setMarketplaceFeePercentage::_percentage must be <= 100");
-        marketplaceFeePercentage = _percentage * 10;
-    }
-    
-    function getCreatorFeePercentage() public view returns (uint256) {
-        return creatorFeePercentage;
-    }
+    function forceCloseSale(uint marketKey) public onlyAdmin {
+        // 시스템에서 호출. 입찰자가 있는 상태에서도 가능
+        SaleDocument memory doc = _salesBook[marketKey];
+        require (doc.onSale, "market key : not on sale");
 
-    function setCreatorFeePercentage(uint256 _percentage) public onlyOwner {
-        require( _percentage <= 100, "setCreatorFeePercentage::_percentage must be <= 100");
-        creatorFeePercentage = _percentage * 10;
+        emit ForceCloseSale(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice, doc.bidCount);
+
+        _closeSale(marketKey);
     }
 
-    function getERC721ContractPrimarySaleFeePercentage(address _contractAddress) public view returns (uint256) {
-        return primarySaleFees[_contractAddress];
-    }
+    function buy(uint marketKey, uint price, uint metaHash) external payable whenNotPaused {
+        // 구매자가 호출. 구매자가 수수료 부담. 레이지민트일 경우 민팅 비용까지도 구매자가 부담. 판매자도 구매 가능
 
-    function setERC721ContractPrimarySaleFeePercentage( address _contractAddress, uint8 _percentage ) public onlyOwner {
-        require( _percentage <= 1000, "setERC721ContractPrimarySaleFeePercentage::_percentage must be <= 1000");
-        primarySaleFees[_contractAddress] = _percentage;
-    }
+        SaleDocument memory doc = _salesBook[marketKey];
+        require (doc.onSale, "market key : not on sale");
+        require (doc.startTime <= block.timestamp && block.timestamp <= doc.endTime, "not on sale time");
+        require (doc.buyNowPrice == price && price == msg.value, "transfered value must match the price");
+        require (doc.metaHash == metaHash, "meta hash changed");
 
-    function setMinimumBidIncreasePercentage(uint8 _percentage) public onlyOwner {
-        minimumBidIncreasePercentage = _percentage;
-    }    
-
-    function ownerMustHaveMarketplaceApproved( address _tokenAddress, uint256 _tokenId ) internal view {
-        IERC721 erc721 = IERC721(_tokenAddress);
-        address owner = erc721.ownerOf(_tokenId);
-        require( erc721.isApprovedForAll(owner, address(this)), "owner must have approved contract");
-    }
-
-    function senderMustBeTokenOwner(address _tokenAddress, uint256 _tokenId) internal view {
-        IERC721 erc721 = IERC721(_tokenAddress);
-        require( erc721.ownerOf(_tokenId) == msg.sender, "sender must be the token owner");
-    }
-
-    function createBuyNow( address _tokenAddress, uint256 _tokenId, uint256 _price, uint256 _startingAt, uint256 _expiredAt, address _creator, address _partner) external {
-        if(_startingAt <= block.timestamp) {
-            _createOrder( BUYNOW, _tokenAddress, _tokenId, _price, _price, block.timestamp, _expiredAt, _creator, _partner);
+        if (doc.metaHash > 0 && !doc.isLazyMint) {
+            _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
         }
-        else {
-            _createOrder( BUYNOW, _tokenAddress, _tokenId, _price, _price, _startingAt, _expiredAt, _creator, _partner);
+
+        if (doc.isLazyMint) {
+            doc.tokenId = _callNFTMint(doc.nftContract, doc.seller, doc.metaUri);
         }
         
-    }
-
-    function createAuction( address _tokenAddress, uint256 _tokenId, uint256 _price, uint256 _endingPrice, uint256 _startingAt, uint256 _expiredAt, address _creator, address _partner) external {
-        require( !_tokenHasBid(_tokenAddress, _tokenId ), "createOrder::Order already exists");
-        _createOrder( AUCTION, _tokenAddress, _tokenId, _price, _endingPrice, _startingAt, _expiredAt, _creator, _partner);
-    }
-
-    function _createOrder( uint256 _type, address _tokenAddress, uint256 _tokenId, uint256 _price, uint256 _endingPrice, uint256 _startingAt, uint256 _expiredAt, address _creator, address _partner) internal {
-        ownerMustHaveMarketplaceApproved(_tokenAddress, _tokenId);
-        senderMustBeTokenOwner(_tokenAddress, _tokenId);
-        require(_price > 0, "createOrder::Price should be bigger than 0");
-        require( _price <= maximumMarketValue, "createOrder::Cannot set sale price larger than max value" );
-        require( _startingAt < _expiredAt, "createOrder::Cannot _startingAt larger than _expiredAt" );
-
-        bytes32 _orderId = keccak256(abi.encodePacked(block.timestamp, msg.sender, _tokenAddress, _tokenId, _price));
+        _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, msg.sender);
         
-        tokenPrices[_tokenAddress][_tokenId] = Auction(_type, _orderId, payable(msg.sender), _creator, _partner, _price, _endingPrice, _startingAt, _expiredAt, AuctionStatus.Live);
-        emit CreateOrder(_type, _orderId, msg.sender, _tokenAddress, _price, _tokenId, _startingAt, _expiredAt);
+        uint[] memory payoutValues = _payout(price, doc.payoutAddresses, doc.payoutRatios);
+        emit Payout(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, price, doc.payoutAddresses, doc.payoutRatios, payoutValues);
+
+        emit Buy(doc.saleType, doc.marketKey, msg.sender, doc.nftContract, doc.seller, doc.tokenId, doc.collectionKey, doc.originator, price);
+
+        delete(_salesBook[marketKey]);
     }
 
-    function cancelOrder(address _tokenAddress, uint256 _tokenId) external payable {
-        require(tokenPrices[_tokenAddress][_tokenId].seller == msg.sender, "cancelOrder::seller only can cancel order.");
-        Auction memory sp = tokenPrices[_tokenAddress][_tokenId];
-        _closeOrder(_tokenAddress, _tokenId);
-        emit CancelOrder(sp.saleType, sp.a_id, sp.seller, _tokenAddress, sp.price, _tokenId);
-    }
+    function bid(uint marketKey, uint price, uint metaHash) external payable whenNotPaused {
+        // 입찰자가 호출. 입찰자가 수수료 부담. 레이지민트일 경우 민팅 비용까지도 구매자가 부담.
+        // 판매자도 입찰 가능
 
-    function forceClose(address _tokenAddress, uint256 _tokenId) external payable onlyOwner{
-        Auction memory sp = tokenPrices[_tokenAddress][_tokenId];
-        _closeOrder(_tokenAddress, _tokenId);
-        // emit ForceClose(sp.a_id, _tokenAddress, _tokenId);   
-        emit ForceClose(sp.saleType, sp.a_id, sp.seller, _tokenAddress, sp.price, _tokenId);
-    }
+        SaleDocument memory doc = _salesBook[marketKey];
+        require (doc.onSale, "market key : not on sale");
+        require (doc.startTime <= block.timestamp && block.timestamp <= doc.endTime, "not on sale time");
+        require (price == msg.value, "transfered value must match the price");
+        require (doc.metaHash == metaHash, "meta hash changed");
 
-    function _closeOrder(address _tokenAddress, uint256 _tokenId) private {
-        if(_tokenHasBid(_tokenAddress, _tokenId )) {
-            _refundBid(_tokenAddress, _tokenId);
-        }
-        _resetTokenPrice(_tokenAddress, _tokenId, AuctionStatus.Closed);
-    }
-
-    function buy(address _tokenAddress, uint256 _tokenId) public payable {
-        ownerMustHaveMarketplaceApproved(_tokenAddress, _tokenId);
-        require(_priceSetterStillOwnsTheToken(_tokenAddress, _tokenId),"buy::Current token owner must be the person to have the latest price.");
-
-        Auction memory sp = tokenPrices[_tokenAddress][_tokenId];
-        require(sp.price > 0, "buy::Tokens priced at 0 are not for sale.");
-        require(sp.price == msg.value,"buy::Must purchase the token for the correct price");
-        require(sp.startingAt <= block.timestamp, "buy::startingAt is larger than block.timestamp.");
-        require(sp.saleType == BUYNOW, "buy::Auction mode does not support this func.");
-        require(sp.creator != address(0), "payout::invalidate creator address");
-        require(sp.partner != address(0), "payout::invalidate partner address");
-
-        IERC721 erc721 = IERC721(_tokenAddress);
-        address tokenOwner = erc721.ownerOf(_tokenId);
-        erc721.safeTransferFrom(tokenOwner, msg.sender, _tokenId);
-        _resetTokenPrice(_tokenAddress, _tokenId, AuctionStatus.Closed);
-        _setTokenAsSold(_tokenAddress, _tokenId);
-
-        _payout(sp.price, sp.creator, sp.partner);
-        emit Sold(sp.saleType, sp.a_id, _tokenAddress, msg.sender, tokenOwner, sp.price, _tokenId);
-    }
-
-    function tokenPrice(address _tokenAddress, uint256 _tokenId) external view returns (uint256) {
-        ownerMustHaveMarketplaceApproved(_tokenAddress, _tokenId);
-        if (_priceSetterStillOwnsTheToken(_tokenAddress, _tokenId)) {
-            return tokenPrices[_tokenAddress][_tokenId].price;
-        }
-        return 0;
-    }
-
-    function bid( address _tokenAddress, uint256 _tokenId, uint256 _newBidprice) external payable {
-        Auction memory sp = tokenPrices[_tokenAddress][_tokenId];
-        require(block.timestamp >= sp.startingAt, "bid:: not started.");
-        require(block.timestamp < sp.expiredAt, "bid:: already expired.");
-        require(sp.saleType == AUCTION, "buy::Buy Now mode does not support this func.");
-        require(_newBidprice > 0, "bid::Cannot bid 0 Wei.");
-        require(_newBidprice == msg.value,"buy::Must purchase the token for the correct price");
-        require(_newBidprice <= maximumMarketValue, "bid::Cannot bid higher than max value");
-        if (sp.endingPrice > 0) {
-            require(_newBidprice <= sp.endingPrice, "bid::Overflow ending price");
-        }
-        
-        uint256 currentBidprice = tokenCurrentBids[_tokenAddress][_tokenId].price;
-        
-        if (_newBidprice == sp.endingPrice) {
-            // 즉시 구매 (AcceptBid)
-            _refundBid(_tokenAddress, _tokenId);
-
-            IERC721 erc721 = IERC721(_tokenAddress);
-            address tokenOwner = erc721.ownerOf(_tokenId);
-            erc721.safeTransferFrom(tokenOwner, msg.sender, _tokenId);
-
-            _resetTokenPrice(_tokenAddress, _tokenId, AuctionStatus.Closed);
-            _setTokenAsSold(_tokenAddress, _tokenId);
-            _payout(sp.endingPrice, sp.creator, sp.partner);
-
-            emit AcceptBid(sp.a_id, 0, sp.seller, sp.price, _tokenAddress, msg.sender, _newBidprice, _tokenId);
-            
+        if (doc.bidder == address(0)) {
+            require (doc.startPrice <= price, "transfered value must be equal or greater than the start price");
         } else {
-            // 비딩 (Bid)
-            require( _newBidprice > currentBidprice, "bid::Must place higher bid than existing bid.");
-             // Must bid higher than current bid.
-            require( _newBidprice > currentBidprice && _newBidprice >= currentBidprice.add( currentBidprice.mul(minimumBidIncreasePercentage).div(1000)), "bid::must bid higher than previous bid + minimum percentage increase.");
+            require (doc.bidPrice.mul(doc.minBidIncrPercent.add(1000)).div(1000) <= price, "transfered value must be greater than current minimum bid price");
+        }
+
+        if (doc.bidder != address(0)) {
+            _refundBid(doc.bidder, doc.bidPrice);
             
-            bytes32 _bidId = keccak256(
-                abi.encodePacked(
-                    block.timestamp,
-                    msg.sender,
-                    sp.a_id,
-                    _newBidprice,
-                    sp.expiredAt
-                )
-            );
-    
-            IERC721 erc721 = IERC721(_tokenAddress);
-            address tokenOwner = erc721.ownerOf(_tokenId);
-            require(tokenOwner != msg.sender, "bid::Bidder cannot be owner.");
-            _refundBid(_tokenAddress, _tokenId);
-            _setBid(sp.a_id, _bidId, _newBidprice, payable(msg.sender), _tokenAddress, _tokenId, sp.startingAt, sp.expiredAt);
-    
-            emit Bid(sp.a_id, _bidId, sp.seller, sp.price, _tokenAddress, msg.sender, _newBidprice, _tokenId);
+            emit Refund(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice);
+        }
+
+        doc.bidPrice = price;
+        doc.bidder = msg.sender;
+        doc.bidCount += 1;
+
+        emit Bid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.bidder, doc.bidPrice, doc.bidCount);
+
+        if (doc.buyNowPrice > 0 && doc.buyNowPrice <= price) {
+            acceptBid(doc.marketKey, metaHash);
         }
     }
 
-    function getBlockTime() public view returns (uint256) {
-        return block.timestamp;
-    } 
+    function acceptBid(uint marketKey, uint metaHash) public onlyAdmin {
+        // 마켓시스템 호출. 시간이 되면 자동으로 낙찰처리. 또는 경매에서 즉시구매가가 되었을때 실행.
 
-    function acceptBid(address _tokenAddress, uint256 _tokenId) public {
-        Auction memory sp = tokenPrices[_tokenAddress][_tokenId];
-        require(sp.saleType == AUCTION, "buy::Buy Now mode  does not support this func.");
-        
-        ownerMustHaveMarketplaceApproved(_tokenAddress, _tokenId);
-        senderMustBeTokenOwner(_tokenAddress, _tokenId);
-        
-        require( _tokenHasBid(_tokenAddress, _tokenId), "acceptBid::Cannot accept a bid when there is none.");        
-        require(sp.expiredAt < block.timestamp);
-        require(sp.creator != address(0), "payout::invalidate creator address");
-        require(sp.partner != address(0), "payout::invalidate partner address");
+        SaleDocument memory doc = _salesBook[marketKey];
+        require (doc.onSale, "market key : not on sale");
+        require (doc.saleType == SaleType.AUCTION, "not auction type");
+        require (doc.metaHash == metaHash, "meta hash changed");
 
-        ActiveBid memory currentBid = tokenCurrentBids[_tokenAddress][_tokenId];
-        
-        IERC721 erc721 = IERC721(_tokenAddress);
-        erc721.safeTransferFrom(msg.sender, currentBid.bidder, _tokenId);
-        
-        _payout(currentBid.price, sp.creator, sp.partner);
-        
-        _resetTokenPrice(_tokenAddress, _tokenId, AuctionStatus.Closed);
-        _resetBid(_tokenAddress, _tokenId);
-        _setTokenAsSold(_tokenAddress, _tokenId);
-        emit AcceptBid(currentBid.a_id, currentBid.b_id, sp.seller, sp.price, _tokenAddress, currentBid.bidder, currentBid.price, _tokenId);
-    }
-
-    function cancelBid(address _tokenAddress, uint256 _tokenId) external {
-        Auction memory sp = tokenPrices[_tokenAddress][_tokenId];
-        ActiveBid memory currentBid = tokenCurrentBids[_tokenAddress][_tokenId];
-        require(sp.saleType == AUCTION, "buy::Buy Now mode does not support this func.");
-        require(_checkBidder(msg.sender, _tokenAddress, _tokenId),"cancelBid::Cannot cancel a bid if sender hasn't made one.");
-        _refundBid(_tokenAddress, _tokenId);
-        emit CancelBid(currentBid.a_id, currentBid.b_id, sp.seller, sp.price, _tokenAddress,msg.sender,tokenCurrentBids[_tokenAddress][_tokenId].price,_tokenId);
-    }
-
-    function getCurrentBid(address _tokenAddress, uint256 _tokenId) public view returns (uint256, address) {
-        return (tokenCurrentBids[_tokenAddress][_tokenId].price, tokenCurrentBids[_tokenAddress][_tokenId].bidder);
-    }
-
-    function getOrderInfo(address _tokenAddress, uint256 _tokenId) public view returns (uint256, address, uint256, uint256, uint256, address, address) {
-        Auction memory sp = tokenPrices[_tokenAddress][_tokenId];
-        return (sp.saleType, sp.seller, sp.price, sp.endingPrice, sp.expiredAt, sp.creator, sp.partner);
-    }
-
-    function hasTokenBeenSold(address _tokenAddress, uint256 _tokenId) external view returns (bool) {
-        return soldTokens[_tokenAddress][_tokenId];
-    }
-
-    function _priceSetterStillOwnsTheToken( address _tokenAddress, uint256 _tokenId ) internal view returns (bool) {
-        IERC721 erc721 = IERC721(_tokenAddress);
-        return erc721.ownerOf(_tokenId) == tokenPrices[_tokenAddress][_tokenId].seller;
-    }
-
-    function _payout( uint256 _amount, address _creatorAddress, address _partnerAddress) private {
-        uint256[4] memory payments;
-        
-        // uint256 marketplaceFee
-        payments[0] = calcPercentagePayment(_amount, getMarketplaceFeePercentage());
-        
-        // unit256 creatorFee
-        payments[1] = calcPercentagePayment(_amount, getCreatorFeePercentage());
-
-        // unit256 partnerFee
-        payments[2] = calcPercentagePayment(_amount, getPartnerFeePercentage());
-
-        // marketplacePayment
-        if (payments[0] > 0) {
-            sendMoneyOrEscrow(_makePayable(maintainer), payments[0]);
+        if (doc.metaHash > 0 && !doc.isLazyMint) {
+            _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
         }
-        // creatorPayment
-        if (payments[1] > 0) {
-            require(_creatorAddress != address(0), "payout::invalidate creator address");
-            sendMoneyOrEscrow(_makePayable(_creatorAddress), payments[1]);
+
+        if (doc.bidder != address(0)) {
+            if (doc.isLazyMint) {
+                doc.tokenId = _callNFTMint(doc.nftContract, doc.seller, doc.metaUri);
+            }
+            
+            _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, doc.bidder);
+            uint[] memory payoutValues = _payout(doc.bidPrice, doc.payoutAddresses, doc.payoutRatios);
+
+            emit Payout(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, doc.bidPrice, doc.payoutAddresses, doc.payoutRatios, payoutValues);
         }
-        // partnerPayment
-        if (payments[2] > 0) {
-            require(_partnerAddress != address(0), "payout::invalidate partner address");
-            sendMoneyOrEscrow(_makePayable(_partnerAddress), payments[2]);
+
+        emit AcceptBid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice, doc.bidCount);
+
+        delete(_salesBook[marketKey]);
+    }
+
+    function _createSale(SaleDocument memory doc) internal {
+        require (_salesBook[doc.marketKey].onSale == false, "market key : already exist");
+        require (doc.endTime > doc.startTime && doc.endTime > block.timestamp, "invalid endTime");
+        require (doc.seller != address(0), "invalid seller address");
+        require (doc.nftContract != address(0), "invalid nft contract address");
+        require (!doc.isLazyMint && (doc.seller == _getTokenOwner(doc.nftContract, doc.tokenId)), "not token owner");
+        require (_isTokenApprovedForAll(doc.nftContract, doc.seller), "not approved");
+
+        if (doc.metaHash != 0 && !doc.isLazyMint) {
+            _callNFTSaveSnapsot(doc.nftContract, doc.tokenId, doc.metaHash);
+        }
+        
+        doc.onSale = true;
+        _salesBook[doc.marketKey] = doc;
+
+        emit CreateSale(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId,
+            doc.collectionKey, doc.originator, doc.startPrice, doc.buyNowPrice,
+            doc.startTime, doc.endTime);
+    }
+
+    function _closeSale(uint marketKey) internal {
+        SaleDocument memory doc = _salesBook[marketKey];
+        if (doc.onSale) {
+            if (doc.saleType == SaleType.AUCTION && doc.bidder != address(0)) {
+                _refundBid(doc.bidder, doc.bidPrice);
+                
+                emit Refund(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice);
+            }
+
+            if (doc.metaHash != 0) {
+                _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
+            }
+        }
+        delete(_salesBook[marketKey]);
+    }
+
+    function _refundBid(address bidder, uint bidPrice) internal {
+        if (bidder != address(0)) {
+            payable(bidder).transfer(bidPrice);
         }
     }
 
-    function calcPercentagePayment(uint256 _amount, uint256 _percentage) internal pure returns (uint256) {
-        return _amount.mul(_percentage).div(1000);
-    }
+    function _payout(uint payoutPrice, address[] memory payoutAddresses, uint[] memory payoutRatios) internal returns (uint[] memory) {
+        require(address(this).balance >= payoutPrice, "Depository balance is not enough to payout");
+        require(payoutAddresses.length == payoutRatios.length, "payout pair must match");
 
-    function _setTokenAsSold(address _tokenAddress, uint256 _tokenId) internal {
-        if (soldTokens[_tokenAddress][_tokenId]) {
-            return;
+        if (payoutPrice > 0 && payoutAddresses.length > 0) {
+            uint payoutRatioSum = 0;
+            uint[] memory payoutValues = new uint[] (payoutAddresses.length);
+            for (uint i = 0; i < payoutAddresses.length; i++) {
+                payoutRatioSum += payoutRatios[i];
+            }
+            for (uint i = 0; i < payoutAddresses.length; i++) {
+                if (payoutRatios[i] > 0) {
+                    uint payoutVal = payoutPrice.mul(payoutRatios[i]).div(payoutRatioSum);
+                    payoutValues[i] = payoutVal;
+                    payable(payoutAddresses[i]).transfer(payoutVal);
+                } else {
+                    payoutValues[i] = 0;
+                }
+            }
+            return payoutValues;
         }
-        soldTokens[_tokenAddress][_tokenId] = true;
+        return new uint[](0);
     }
 
-    function _resetTokenPrice(address _tokenAddress, uint256 _tokenId, AuctionStatus _status) internal {
-        tokenPrices[_tokenAddress][_tokenId] = Auction(0, 0, payable(address(0)), address(0), address(0), 0, 0, 0, 0, _status);
+
+    function _isTokenApprovedForAll(address nftContract, address owner) internal view returns (bool) {
+        IERC721 erc721 = IERC721(nftContract);
+        return erc721.isApprovedForAll(owner, address(this));
     }
 
-    function _checkBidder( address _bidder, address _tokenAddress, uint256 _tokenId ) internal view returns (bool) {
-        return tokenCurrentBids[_tokenAddress][_tokenId].bidder == _bidder;
+    function _getTokenOwner(address nftContract, uint256 tokenId) internal view returns (address) {
+        IERC721 erc721 = IERC721(nftContract);
+        return erc721.ownerOf(tokenId);
     }
 
-    function _tokenHasBid(address _tokenAddress, uint256 _tokenId) internal view returns (bool) {
-        return tokenCurrentBids[_tokenAddress][_tokenId].bidder != address(0);
+    function _callNFTTransfer(address nftContract, uint tokenId, address from, address to) internal {
+        IERC721 erc721 = IERC721(nftContract);
+        address owner = erc721.ownerOf(tokenId);
+        require (owner == from, "owner not match");
+        erc721.safeTransferFrom(from, to, tokenId);
     }
 
-    function _refundBid(address _tokenAddress, uint256 _tokenId) internal {
-        ActiveBid memory currentBid = tokenCurrentBids[_tokenAddress][_tokenId];
-        if (currentBid.bidder == address(0)) {
-            return;
-        }
-        
-        _resetBid(_tokenAddress, _tokenId);
-        sendMoneyOrEscrow(currentBid.bidder, currentBid.price);
+   function _callNFTMint(address nftContract, address to, string memory uri) internal returns (uint) {
+        MIP721 mip721 = MIP721(nftContract);
+        return mip721.mint(to, uri);
     }
 
-    function _resetBid(address _tokenAddress, uint256 _tokenId) internal { 
-        tokenCurrentBids[_tokenAddress][_tokenId] = ActiveBid(0, 0, payable(address(0)),0,0,0,0);
+    function _callNFTSaveSnapsot(address nftContract, uint tokenId, uint hashValue) internal {
+        MIP721 mip721 = MIP721(nftContract);
+        mip721.snapshot(tokenId, hashValue);
     }
 
-    function _setBid( bytes32 _aucId,  bytes32 _bidId, uint256 _price, address payable _bidder, address _tokenAddress, uint256 _tokenId, uint256 _startingAt, uint256 _expiredAt) internal {
-        require(_bidder != address(0), "Bidder cannot be 0 address.");
-        tokenCurrentBids[_tokenAddress][_tokenId] = ActiveBid(_aucId, _bidId, _bidder, getMarketplaceFeePercentage(), _price, _startingAt, _expiredAt);
-    }
-
-    function _makePayable(address _address) internal pure returns (address payable) {
-        return payable(address(uint160(_address)));
+    function _callNFTRemoveSnapsot(address nftContract, uint tokenId) internal {
+        MIP721 mip721 = MIP721(nftContract);
+        mip721.removeSnapshot(tokenId);
     }
 }
