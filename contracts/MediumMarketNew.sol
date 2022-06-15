@@ -69,19 +69,19 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
 
     mapping(uint => SaleDocument) _salesBook;   // 판매 대기 또는 판매중인 판매정보 목록. 판매 완료되거나 판매 기간 종료시 삭제.
 
-    event CreateSale(SaleType saleType, uint marketKey, address seller, address nftContract, uint tokenId, bool needMint, uint collectionKey, address originator, uint startPrice, uint buyNowPrice, uint minBidIncr, uint startTime, uint endTime);
-
-    //event Sold(uint256 _type, bytes32 _a_id, address indexed _tokenAddress, address indexed _buyer, address indexed _seller, uint256 _amount, uint256 _tokenId);
-    //event Bid(bytes32 _a_id, bytes32 _b_id, address indexed _seller, uint256 _startPrice, address indexed _tokenAddress, address indexed _bidder, uint256 _amount, uint256 _tokenId);
-    //event AcceptBid(bytes32 _a_id, bytes32 _b_id, address indexed _seller, uint256 _startPrice, address indexed _tokenAddress, address indexed _bidder, uint256 _amount, uint256 _tokenId);
-    //event CancelBid(bytes32 _a_id, bytes32 _b_id, address indexed _seller, uint256 _startPrice, address indexed _tokenAddress, address indexed _bidder, uint256 _amount, uint256 _tokenId);
-    //event CancelOrder(uint256 _type, bytes32 _a_id, address indexed _seller, address indexed _tokenAddress, uint256 _amount, uint256 _tokenId);
-    //event ForceClose(uint256 _type, bytes32 _a_id, address indexed _seller, address indexed _tokenAddress, uint256 _amount, uint256 _tokenId);
+    event CreateSale(SaleType saleType, uint indexed marketKey, address indexed seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, uint startPrice, uint buyNowPrice, uint startTime, uint endTime);
+    event Buy(SaleType saleType, uint indexed marketKey, address indexed buyer, address indexed nftContract, address seller, uint tokenId, uint collectionKey, address originator, uint price);
+    event Bid(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address indexed bidder, uint bidPrice, uint bidCount);
+    event AcceptBid(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, uint tokenId, uint collectionKey, address originator, address indexed bidder, uint bidPrice, uint bidCount);
+    event CancelSale(SaleType saleType, uint indexed marketKey, address indexed seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator);
+    event ForceCloseSale(SaleType saleType, uint indexed marketKey, address indexed seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, address bidder, uint bidPrice, uint bidCount);
+    event Refund(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, address indexed bidder, uint bidPrice);
+    event Payout(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, uint tokenId, uint collectionKey, address originator, uint price, address[] payoutAddresses, uint[] payoutRatios, uint[] payoutValues);
 
 
     //uint[] buyNowSaleInfo = [isLazyMint, tokenId, collectionKey, buyNowPrice, startTime, endTime, metaHash];
     function createBuyNow(uint marketKey, address seller, address nftContract, address originator, uint[7] calldata buyNowSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused onlyAdmin {
-        // 판매자가 호출? 판매자가 수수료 부담. 아니라면 마켓에서 호출하는걸로 해야함.
+        // 마켓에서의 호출을 기준으로 함
         
         SaleDocument memory doc;
         doc.saleType = SaleType.AUCTION;
@@ -106,7 +106,7 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
 
     //uint[] auctionSaleInfo = [isLazyMint, tokenId, collectionKey, startPrice, buyNowPrice, startTime, endTime, minBidIncrPercent, metaHash];
     function createAuction(uint marketKey, address seller, address nftContract,address originator, uint[9] calldata auctionSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused onlyAdmin {
-        // 판매자가 호출? 판매자가 수수료 부담. 아니라면 마켓에서 호출하는걸로 해야함.
+        // 마켓에서의 호출을 기준으로 함
 
         SaleDocument memory doc;
         doc.saleType = SaleType.AUCTION;
@@ -138,6 +138,8 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         require (doc.seller == msg.sender, "only seller can cancel");
         require (doc.bidder == address(0), "bid exist");
 
+        emit CancelSale(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator);
+
         _closeSale(marketKey);
     }
 
@@ -145,6 +147,8 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         // 시스템에서 호출. 입찰자가 있는 상태에서도 가능
         SaleDocument memory doc = _salesBook[marketKey];
         require (doc.onSale, "market key : not on sale");
+
+        emit ForceCloseSale(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice, doc.bidCount);
 
         _closeSale(marketKey);
     }
@@ -163,12 +167,17 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         }
 
         if (doc.isLazyMint) {
-            doc.tokenId = _callNFTMint(doc.nftContract, msg.sender, doc.metaUri);
-        } else {
-            _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, msg.sender);
+            doc.tokenId = _callNFTMint(doc.nftContract, doc.seller, doc.metaUri);
         }
+        
+        _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, msg.sender);
+        
+        uint[] memory payoutValues = _payout(price, doc.payoutAddresses, doc.payoutRatios);
+        emit Payout(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, price, doc.payoutAddresses, doc.payoutRatios, payoutValues);
 
-        _payout(price, doc.payoutAddresses, doc.payoutRatios);
+        emit Buy(doc.saleType, doc.marketKey, msg.sender, doc.nftContract, doc.seller, doc.tokenId, doc.collectionKey, doc.originator, price);
+
+        delete(_salesBook[marketKey]);
     }
 
     function bid(uint marketKey, uint price, uint metaHash) external payable whenNotPaused {
@@ -189,13 +198,15 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
 
         if (doc.bidder != address(0)) {
             _refundBid(doc.bidder, doc.bidPrice);
+            
+            emit Refund(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice);
         }
 
         doc.bidPrice = price;
         doc.bidder = msg.sender;
         doc.bidCount += 1;
 
-        // 메타해시 체크를 매 비드마다 체크할것인가? 체크할거라면 여기서도 해야함.
+        emit Bid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.bidder, doc.bidPrice, doc.bidCount);
 
         if (doc.buyNowPrice > 0 && doc.buyNowPrice <= price) {
             acceptBid(doc.marketKey, metaHash);
@@ -216,14 +227,18 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
 
         if (doc.bidder != address(0)) {
             if (doc.isLazyMint) {
-                // 바로 구매자에게 민팅해서 보낼때.. 만약 판매자에게로 민팅하고 다시 구매자에게 보내는 방식으로 하려면 변경 필요
-                doc.tokenId = _callNFTMint(doc.nftContract, doc.bidder, doc.metaUri);
-            } else {
-                _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, doc.bidder);
+                doc.tokenId = _callNFTMint(doc.nftContract, doc.seller, doc.metaUri);
             }
+            
+            _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, doc.bidder);
+            uint[] memory payoutValues = _payout(doc.bidPrice, doc.payoutAddresses, doc.payoutRatios);
 
-            _payout(doc.bidPrice, doc.payoutAddresses, doc.payoutRatios);
+            emit Payout(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, doc.bidPrice, doc.payoutAddresses, doc.payoutRatios, payoutValues);
         }
+
+        emit AcceptBid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice, doc.bidCount);
+
+        delete(_salesBook[marketKey]);
     }
 
     function _createSale(SaleDocument memory doc) internal {
@@ -240,6 +255,10 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         
         doc.onSale = true;
         _salesBook[doc.marketKey] = doc;
+
+        emit CreateSale(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId,
+            doc.collectionKey, doc.originator, doc.startPrice, doc.buyNowPrice,
+            doc.startTime, doc.endTime);
     }
 
     function _closeSale(uint marketKey) internal {
@@ -247,6 +266,8 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         if (doc.onSale) {
             if (doc.saleType == SaleType.AUCTION && doc.bidder != address(0)) {
                 _refundBid(doc.bidder, doc.bidPrice);
+                
+                emit Refund(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice);
             }
 
             if (doc.metaHash != 0) {
