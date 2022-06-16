@@ -87,13 +87,13 @@ contract MIP721 is ERC721, ERC721Enumerable, ERC721URIStorage, Pausable, AccessC
         emit BulkTransfer(from, to, tokenIds.length, tokenIds);
     }
 
-    function snapshot(uint256 _id, uint256 _hash) public override onlyRole(ADMIN_ROLE) {
-        //require(ownerOf(_id) == _msgSender(), "not owner");
+    function snapshot(uint256 _id, uint256 _hash) public override {
+        require(ownerOf(_id) == _msgSender() || hasRole(ADMIN_ROLE, _msgSender()), "not owner or admin");
         MIP721Snapshot._snapshot(_id, _hash);
     }
     
-    function removeSnapshot(uint256 _id) public onlyRole(ADMIN_ROLE) {
-        //require(ownerOf(_id) == _msgSender(), "not owner");
+    function removeSnapshot(uint256 _id) public {
+        require(ownerOf(_id) == _msgSender() || hasRole(ADMIN_ROLE, _msgSender()), "not owner or admin");
         MIP721Snapshot._snapshot(_id, 0x0);
     }
 
