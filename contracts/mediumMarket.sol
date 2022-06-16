@@ -218,7 +218,7 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         require (doc.endTime > doc.startTime && doc.endTime > block.timestamp, "invalid endTime");
         require (doc.seller != address(0), "invalid seller address");
         require (doc.nftContract != address(0), "invalid nft contract address");
-        require (!doc.isLazyMint && (doc.seller == _getTokenOwner(doc.nftContract, doc.tokenId)), "not token owner");
+        require (doc.isLazyMint || (doc.seller == _getTokenOwner(doc.nftContract, doc.tokenId)), "not token owner");
         require (_isTokenApprovedForAll(doc.nftContract, doc.seller), "not approved");
 
         if (doc.metaHash != 0 && !doc.isLazyMint) {
