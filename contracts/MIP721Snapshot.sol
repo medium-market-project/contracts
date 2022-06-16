@@ -55,10 +55,10 @@ abstract contract MIP721Snapshot {
     //     }
     // }
 
-    /**
-     * @dev See {IERC165-supportsInterface}.
-     */
-    function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {
-        return interfaceId == type(MIP721Snapshot).interfaceId;
-    }
+    // /**
+    //  * @dev See {IERC165-supportsInterface}.
+    //  */
+    // function supportsInterface(bytes4 interfaceId) public view virtual returns (bool) {
+    //     return interfaceId == type(MIP721Snapshot).interfaceId;
+    // }
 }
