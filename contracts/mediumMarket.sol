@@ -52,8 +52,9 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
 
 
     //uint[] buyNowSaleInfo = [isLazyMint, tokenId, collectionKey, buyNowPrice, startTime, endTime, metaHash];
-    function createBuyNow(uint marketKey, address seller, address nftContract, address originator, uint[7] calldata buyNowSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused onlyAdmin {
-        // 마켓에서의 호출을 기준으로 함
+    function createBuyNow(uint marketKey, address seller, address nftContract, address originator, uint[7] calldata buyNowSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused {
+        // 판매자의 호출을 기준으로 함
+        require (seller == msg.sender, "invalid seller");
         
         SaleDocument memory doc;
         doc.saleType = SaleType.AUCTION;
@@ -77,8 +78,9 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
     }
 
     //uint[] auctionSaleInfo = [isLazyMint, tokenId, collectionKey, startPrice, buyNowPrice, startTime, endTime, minBidIncrPercent, metaHash];
-    function createAuction(uint marketKey, address seller, address nftContract,address originator, uint[9] calldata auctionSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused onlyAdmin {
-        // 마켓에서의 호출을 기준으로 함
+    function createAuction(uint marketKey, address seller, address nftContract,address originator, uint[9] calldata auctionSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused {
+        // 판매자의 호출을 기준으로 함
+        require (seller == msg.sender, "invalid seller");
 
         SaleDocument memory doc;
         doc.saleType = SaleType.AUCTION;
@@ -130,7 +132,9 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
 
         SaleDocument memory doc = _salesBook[marketKey];
         require (doc.onSale, "market key : not on sale");
-        require (doc.startTime <= block.timestamp && block.timestamp <= doc.endTime, "not on sale time");
+        if (doc.endTime != 0) {
+            require (doc.startTime <= block.timestamp && block.timestamp <= doc.endTime, "not on sale time");
+        }
         require (doc.buyNowPrice == price && price == msg.value, "transfered value must match the price");
         require (doc.metaHash == metaHash, "meta hash changed");
 
@@ -215,9 +219,11 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
 
     function _createSale(SaleDocument memory doc) internal {
         require (_salesBook[doc.marketKey].onSale == false, "market key : already exist");
-        require (doc.endTime > doc.startTime && doc.endTime > block.timestamp, "invalid endTime");
         require (doc.seller != address(0), "invalid seller address");
         require (doc.nftContract != address(0), "invalid nft contract address");
+        if (doc.saleType != SaleType.BUY_NOW || doc.endTime != 0) {
+            require (doc.endTime > doc.startTime && doc.endTime > block.timestamp, "invalid endTime");
+        }
         require (doc.isLazyMint || (doc.seller == _getTokenOwner(doc.nftContract, doc.tokenId)), "not token owner");
         require (_isTokenApprovedForAll(doc.nftContract, doc.seller), "not approved");
 
