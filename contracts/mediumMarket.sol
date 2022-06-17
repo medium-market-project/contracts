@@ -108,7 +108,6 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         // 판매자가 호출. 입찰자가 있는 상태에서는 불가능
         SaleDocument memory doc = _salesBook[marketKey];
         require (doc.onSale, "market key : not on sale");
-        require (block.timestamp <= doc.endTime, "not on sale time");
         require (doc.seller == msg.sender, "only seller can cancel");
         require (doc.bidder == address(0), "bid exist");
 
