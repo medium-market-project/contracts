@@ -4,35 +4,8 @@ pragma solidity 0.8.12;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-
-contract MediumAccessControl is AccessControl {
-    
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN");
-    
-    constructor() {
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(ADMIN_ROLE, msg.sender);
-    }
-
-    modifier onlyAdmin() {
-        _checkRole(ADMIN_ROLE);
-        _;
-    }
-}
-
-contract MediumPausable is Pausable, Ownable {
-
-    function setPause() external onlyOwner {
-        _pause();
-    }
-
-    function setUnpause() external onlyOwner {
-        _unpause();
-    }
-}
+import "./MediumAccessControl.sol";
+import "./MediumPausable.sol";
 
 contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
 
