@@ -16,11 +16,11 @@ contract SwapFactory is ISwapFactory, MediumAccessControl {
     mapping (address => address) _exchangeToToken;
     mapping (uint256 => address) _idxToToken;
 
-    function createExchange(address token, string calldata name, string calldata symbol) external onlyAdmin returns (address) {
+    function createExchange(address token) external onlyAdmin returns (address) {
         require(token != address(0), "invalid token address");
         require(_tokenToExchange[token] == address(0), "exist token");
 
-        SwapExchange exchange = new SwapExchange(name, symbol);
+        SwapExchange exchange = new SwapExchange(token, 3);
         
         _tokenToExchange[token] = address(exchange);
         _exchangeToToken[address(exchange)] = token;
