@@ -57,7 +57,7 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         require (seller == msg.sender, "invalid seller");
         
         SaleDocument memory doc;
-        doc.saleType = SaleType.AUCTION;
+        doc.saleType = SaleType.BUY_NOW;
         doc.marketKey = marketKey;
         doc.seller = seller;
         doc.nftContract = nftContract;
