@@ -181,6 +181,8 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         doc.bidder = msg.sender;
         doc.bidCount += 1;
 
+        _salesBook[marketKey] = doc;
+
         emit Bid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.bidder, doc.bidPrice, doc.bidCount);
 
         if (doc.buyNowPrice > 0 && doc.buyNowPrice <= price) {
