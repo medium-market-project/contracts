@@ -184,11 +184,15 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         emit Bid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.bidder, doc.bidPrice, doc.bidCount);
 
         if (doc.buyNowPrice > 0 && doc.buyNowPrice <= price) {
-            acceptBid(doc.marketKey, metaHash);
+            _acceptBid(doc.marketKey, metaHash);
         }
     }
 
-    function acceptBid(uint marketKey, uint metaHash) public onlyAdmin {
+    function acceptBid(uint marketKey, uint metaHash) external onlyAdmin {
+        _acceptBid(marketKey, metaHash);
+    }
+    
+    function _acceptBid(uint marketKey, uint metaHash) internal {
         // 마켓시스템 호출. 시간이 되면 자동으로 낙찰처리. 또는 경매에서 즉시구매가가 되었을때 실행.
 
         SaleDocument memory doc = _salesBook[marketKey];
