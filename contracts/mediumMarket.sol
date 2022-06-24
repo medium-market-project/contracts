@@ -142,10 +142,10 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         }
 
         if (doc.isLazyMint) {
-            doc.tokenId = _callNFTMint(doc.nftContract, doc.seller, doc.metaUri);
+            doc.tokenId = _callNFTMint(doc.nftContract, msg.sender, doc.metaUri);
+        } else {
+            _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, msg.sender);
         }
-        
-        _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, msg.sender);
         
         uint[] memory payoutValues = _payout(price, doc.payoutAddresses, doc.payoutRatios);
         emit Payout(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, price, doc.payoutAddresses, doc.payoutRatios, payoutValues);
@@ -208,10 +208,11 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
 
         if (doc.bidder != address(0)) {
             if (doc.isLazyMint) {
-                doc.tokenId = _callNFTMint(doc.nftContract, doc.seller, doc.metaUri);
+                doc.tokenId = _callNFTMint(doc.nftContract, doc.bidder, doc.metaUri);
+            } else {
+                _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, doc.bidder);
             }
             
-            _callNFTTransfer(doc.nftContract, doc.tokenId, doc.seller, doc.bidder);
             uint[] memory payoutValues = _payout(doc.bidPrice, doc.payoutAddresses, doc.payoutRatios);
 
             emit Payout(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, doc.bidPrice, doc.payoutAddresses, doc.payoutRatios, payoutValues);
