@@ -3,13 +3,10 @@
 pragma solidity 0.8.12;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/Counters.sol";
 import "./MediumAccessControl.sol";
 import "./MediumPausable.sol";
 
 contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
-
-    mapping(address => uint) swapDepository;
 
     IERC20 reserveToken;
 
@@ -32,17 +29,14 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
 
     function swapIn(uint amount) external whenNotPaused {
         require (amount <= reserveToken.balanceOf(msg.sender), "insufficient balance");
-        reserveToken.transfer(address(this), amount);
-        swapDepository[msg.sender] += amount;
+        require (reserveToken.transferFrom(msg.sender, address(this), amount), "token transfer fail");
         emit SwapIn(msg.sender, amount);
     }
 
     function swapOut(address to, uint amount) external onlyAdmin {
         require (to != address(0), "invalid address");
         require (amount <= reserveToken.balanceOf(address(this)), "insufficient reserve");
-        require (amount <= swapDepository[to], "insufficient deposit");
-        reserveToken.transfer(to, amount);
-        swapDepository[to] -= amount;
+        require (reserveToken.transfer(to, amount), "token transfer fail");
         emit SwapOut(to, amount);
     }
 }
