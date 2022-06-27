@@ -119,7 +119,7 @@ contract SwapExchange is ISwapExchange {
         require (deadline >= block.timestamp && tokenInputAmount > 0);
         uint256 coinOutputAmount = calcOutputAmount(tokenInputAmount, _token.balanceOf(address(this)), address(this).balance);
         require (coinOutputAmount >= minCoinAmount, "must coinOutputAmount >= minCoinAmount");
-        require (_token.transferFrom(buyer, address(this), tokenInputAmount));
+        require (_token.transferFrom(buyer, address(this), tokenInputAmount), "token transferFrom fail");
         payable(recipient).transfer(coinOutputAmount);
         emit CoinPurchase(buyer, tokenInputAmount, coinOutputAmount);
         return coinOutputAmount;
