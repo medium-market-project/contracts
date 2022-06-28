@@ -47,9 +47,8 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
     event AcceptBid(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, uint tokenId, uint collectionKey, address originator, address indexed bidder, uint bidPrice, uint bidCount);
     event CancelSale(SaleType saleType, uint indexed marketKey, address indexed seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator);
     event ForceCloseSale(SaleType saleType, uint indexed marketKey, address indexed seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, address bidder, uint bidPrice, uint bidCount);
-    event Refund(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, address indexed bidder, uint bidPrice);
-    event Payout(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, uint tokenId, uint collectionKey, address originator, uint price, address[] payoutAddresses, uint[] payoutRatios, uint[] payoutValues);
-
+    event RefundBid(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, address indexed bidder, uint bidPrice);
+    event Payment(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, uint tokenId, uint collectionKey, address originator, uint price, address[] payoutAddresses, uint[] payoutRatios, uint[] payoutValues);
 
     //uint[] buyNowSaleInfo = [isLazyMint, tokenId, collectionKey, buyNowPrice, startTime, endTime, metaHash];
     function createBuyNow(uint marketKey, address seller, address nftContract, address originator, uint[7] calldata buyNowSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused {
@@ -148,7 +147,7 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         }
         
         uint[] memory payoutValues = _payout(price, doc.payoutAddresses, doc.payoutRatios);
-        emit Payout(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, price, doc.payoutAddresses, doc.payoutRatios, payoutValues);
+        emit Payment(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, price, doc.payoutAddresses, doc.payoutRatios, payoutValues);
 
         emit Buy(doc.saleType, doc.marketKey, msg.sender, doc.nftContract, doc.seller, doc.tokenId, doc.collectionKey, doc.originator, price);
 
@@ -174,7 +173,7 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
         if (doc.bidder != address(0)) {
             _refundBid(doc.bidder, doc.bidPrice);
             
-            emit Refund(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice);
+            emit RefundBid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice);
         }
 
         doc.bidPrice = price;
@@ -215,7 +214,7 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
             
             uint[] memory payoutValues = _payout(doc.bidPrice, doc.payoutAddresses, doc.payoutRatios);
 
-            emit Payout(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, doc.bidPrice, doc.payoutAddresses, doc.payoutRatios, payoutValues);
+            emit Payment(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, doc.bidPrice, doc.payoutAddresses, doc.payoutRatios, payoutValues);
         }
 
         emit AcceptBid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice, doc.bidCount);
@@ -251,7 +250,7 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
             if (doc.saleType == SaleType.AUCTION && doc.bidder != address(0)) {
                 _refundBid(doc.bidder, doc.bidPrice);
                 
-                emit Refund(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice);
+                emit RefundBid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice);
             }
 
             if (doc.metaHash != 0) {
