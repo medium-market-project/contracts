@@ -12,7 +12,7 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
 
     event SwapInK(uint indexed swapKey, address indexed from, uint amount);
     event SwapOutK(uint indexed swapKey, address indexed to, uint amount);
-    event SwapRefund(uint indexed swapKey, address indexed to, uint amount);
+    event SwapRefundK(uint indexed swapKey, address indexed to, uint amount);
 
     constructor(address tokenAddress) {
         setReserveToken(tokenAddress);
