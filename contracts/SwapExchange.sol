@@ -5,11 +5,12 @@ pragma solidity ^0.8.12;
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./MediumAccessControl.sol";
+import "./MediumPausable.sol";
 import "./ISwapFactory.sol";
 import "./ISwapExchange.sol";
 
 
-contract SwapExchange is ISwapExchange, MediumAccessControl {
+contract SwapExchange is ISwapExchange, MediumAccessControl, MediumPausable {
     using SafeMath for uint256;
 
     uint256 _totalLiquidity;                            // total supplied liquidity amount
@@ -73,23 +74,23 @@ contract SwapExchange is ISwapExchange, MediumAccessControl {
     }
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    receive() external payable {
+    receive() external payable whenNotPaused {
         _coinToTokenInput(msg.value, 1, block.timestamp, msg.sender, msg.sender);
     }
 
-    function swapCoinToToken(uint256 minTokenAmount, uint256 deadline) external payable returns (uint256) {
+    function swapCoinToToken(uint256 minTokenAmount, uint256 deadline) external payable whenNotPaused returns (uint256) {
         return _coinToTokenInput(msg.value, minTokenAmount, deadline, msg.sender, msg.sender);
     }
 
-    function swapCoinFromToken(uint256 tokenAmount, uint256 deadline) external payable returns(uint256) {
+    function swapCoinFromToken(uint256 tokenAmount, uint256 deadline) external payable whenNotPaused returns(uint256) {
         return _coinToTokenOutput(tokenAmount, msg.value, deadline, msg.sender, msg.sender);
     }
 
-    function swapTokenToCoin(uint256 tokenAmount, uint256 minCoinAmount, uint256 deadline) external returns (uint256) {
+    function swapTokenToCoin(uint256 tokenAmount, uint256 minCoinAmount, uint256 deadline) external whenNotPaused returns (uint256) {
         return _tokenToCoinInput(tokenAmount, minCoinAmount, deadline, msg.sender, msg.sender);
     }
 
-    function swapTokenFromCoin(uint256 coinAmount, uint256 maxTokenAmount, uint256 deadline) external returns (uint256) {
+    function swapTokenFromCoin(uint256 coinAmount, uint256 maxTokenAmount, uint256 deadline) external whenNotPaused returns (uint256) {
         return _tokenToCoinOutput(coinAmount, maxTokenAmount, deadline, msg.sender, msg.sender);
     }
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
