@@ -4,11 +4,12 @@ pragma solidity ^0.8.12;
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./MediumAccessControl.sol";
 import "./ISwapFactory.sol";
 import "./ISwapExchange.sol";
 
 
-contract SwapExchange is ISwapExchange {
+contract SwapExchange is ISwapExchange, MediumAccessControl {
     using SafeMath for uint256;
 
     uint256 _totalLiquidity;                            // total supplied liquidity amount
@@ -178,7 +179,7 @@ contract SwapExchange is ISwapExchange {
         }
     }
     // condition: x
-    function removeLiquidity(uint256 removeLiquidityAmount, uint256 minCoinRemoveAmount, uint256 minTokenRemoveAmount, uint256 deadline) external returns (uint256, uint256) {
+    function removeLiquidity(uint256 removeLiquidityAmount, uint256 minCoinRemoveAmount, uint256 minTokenRemoveAmount, uint256 deadline) external onlyAdmin returns (uint256, uint256) {
         
         require (removeLiquidityAmount > 0 && deadline >= block.timestamp && minCoinRemoveAmount > 0 && minTokenRemoveAmount > 0, "invalid inputs");
         require (_totalLiquidity > 0, "total liquidity is 0");
