@@ -12,6 +12,7 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
 
     event SwapInK(uint indexed swapKey, address indexed from, uint amount);
     event SwapOutK(uint indexed swapKey, address indexed to, uint amount);
+    event SwapRefund(uint indexed swapKey, address indexed to, uint amount);
 
     constructor(address tokenAddress) {
         setReserveToken(tokenAddress);
@@ -38,5 +39,12 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
         require (amount <= reserveToken.balanceOf(address(this)), "insufficient reserve");
         require (reserveToken.transfer(to, amount), "token transfer fail");
         emit SwapOut(swapKey, to, amount);
+    }
+    
+    function swapRefund(uint swapKey, address to, uint amount) external onlyAdmin {
+        require (to != address(0), "invalid address");
+        require (amount <= reserveToken.balanceOf(address(this)), "insufficient reserve");
+        require (reserveToken.transfer(to, amount), "token transfer fail");
+        emit Refund(swapKey, to, amount);
     }
 }
