@@ -9,6 +9,7 @@ contract MediumSwapAgentM is MediumAccessControl, MediumPausable {
 
     event SwapInM(uint indexed swapKey, address indexed from, uint amount);
     event SwapOutM(uint indexed swapKey, address indexed to, uint amount);
+    event SwapRefundM(uint indexed swapKey, address indexed to, uint amount);
 
     function withdrawReserve(address to, uint amount) external onlyAdmin {
         require (amount <= address(this).balance, "insufficient reserve");
@@ -16,13 +17,20 @@ contract MediumSwapAgentM is MediumAccessControl, MediumPausable {
     }
 
     function swapIn(uint swapKey) payable external whenNotPaused {
-        emit SwapIn(swapKey, msg.sender, msg.value);
+        emit SwapInM(swapKey, msg.sender, msg.value);
     }
 
     function swapOut(uint swapKey, address to, uint amount) external onlyAdmin {
         require (to != address(0), "invalid address");
         require (amount <= address(this).balance, "insufficient reserve");
         payable(to).transfer(amount);
-        emit SwapOut(swapKey, to, amount);
+        emit SwapOutM(swapKey, to, amount);
+    }
+    
+    function swapRefund(uint swapKey, address to, uint amount) external onlyAdmin {
+        require (to != address(0), "invalid address");
+        require (amount <= address(this).balance, "insufficient reserve");
+        payable(to).transfer(amount);
+        emit SwapRefundM(swapKey, to, amount);
     }
 }
