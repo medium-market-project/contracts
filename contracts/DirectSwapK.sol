@@ -10,7 +10,7 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
 
     IERC20 reserveToken;
 
-    event SetReserveTokenK(uint indexed admin, address tokenAddress);
+    event SetReserveTokenK(address indexed admin, address tokenAddress);
     event WithdrawReserveK(address indexed admin, address indexed to, uint amount);
     event SwapInK(uint indexed swapKey, address indexed from, uint amount);
     event SwapOutK(uint indexed swapKey, address indexed to, uint amount);
@@ -49,6 +49,6 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
         require (to != address(0), "invalid address");
         require (amount <= reserveToken.balanceOf(address(this)), "insufficient reserve");
         require (reserveToken.transfer(to, amount), "token transfer fail");
-        emit RefundK(swapKey, to, amount);
+        emit SwapRefundK(swapKey, to, amount);
     }
 }
