@@ -10,8 +10,8 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
 
     IERC20 reserveToken;
 
-    event SwapIn(address indexed from, uint amount);
-    event SwapOut(address indexed to, uint amount);
+    event SwapInK(uint indexed swapKey, address indexed from, uint amount);
+    event SwapOutK(uint indexed swapKey, address indexed to, uint amount);
 
     constructor(address tokenAddress) {
         setReserveToken(tokenAddress);
@@ -24,19 +24,19 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
 
     function withdrawReserve(address to, uint amount) external onlyAdmin {
         require (amount <= reserveToken.balanceOf(address(this)), "insufficient reserve");
-        reserveToken.transfer(to, amount);
+        require (reserveToken.transfer(to, amount), "token transfer fail");
     }
 
-    function swapIn(uint amount) external whenNotPaused {
+    function swapIn(uint swapKey, uint amount) external whenNotPaused {
         require (amount <= reserveToken.balanceOf(msg.sender), "insufficient balance");
         require (reserveToken.transferFrom(msg.sender, address(this), amount), "token transfer fail");
-        emit SwapIn(msg.sender, amount);
+        emit SwapInK(swapKey, msg.sender, amount);
     }
 
-    function swapOut(address to, uint amount) external onlyAdmin {
+    function swapOut(uint swapKey, address to, uint amount) external onlyAdmin {
         require (to != address(0), "invalid address");
         require (amount <= reserveToken.balanceOf(address(this)), "insufficient reserve");
         require (reserveToken.transfer(to, amount), "token transfer fail");
-        emit SwapOut(to, amount);
+        emit SwapOut(swapKey, to, amount);
     }
 }
