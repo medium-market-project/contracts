@@ -15,7 +15,7 @@ contract MediumSwapAgentM is MediumAccessControl, MediumPausable {
     function withdrawReserve(address to, uint amount) external onlyAdmin {
         require (amount <= address(this).balance, "insufficient reserve");
         payable(to).transfer(amount);
-        WithdrawReserveM(msg.sender, to, amount);
+        emit WithdrawReserveM(msg.sender, to, amount);
     }
 
     function swapIn(uint swapKey) payable external whenNotPaused {
