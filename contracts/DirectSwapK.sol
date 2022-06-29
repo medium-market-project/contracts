@@ -7,7 +7,6 @@ import "./MediumAccessControl.sol";
 import "./MediumPausable.sol";
 
 contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
     IERC20 reserveToken;
 
@@ -18,9 +17,6 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
     event SwapRefundK(uint indexed swapKey, address indexed to, uint amount);
 
     constructor(address tokenAddress) {
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(ADMIN_ROLE, msg.sender);
-        
         setReserveToken(tokenAddress);
     }
 
