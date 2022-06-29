@@ -7,6 +7,7 @@ import "./MediumPausable.sol";
 
 contract MediumSwapAgentM is MediumAccessControl, MediumPausable {
 
+    event WithdrawReserveM(address indexed admin, address indexed to, uint amount);
     event SwapInM(uint indexed swapKey, address indexed from, uint amount);
     event SwapOutM(uint indexed swapKey, address indexed to, uint amount);
     event SwapRefundM(uint indexed swapKey, address indexed to, uint amount);
@@ -14,6 +15,7 @@ contract MediumSwapAgentM is MediumAccessControl, MediumPausable {
     function withdrawReserve(address to, uint amount) external onlyAdmin {
         require (amount <= address(this).balance, "insufficient reserve");
         payable(to).transfer(amount);
+        WithdrawReserveM(msg.sender, to, amount);
     }
 
     function swapIn(uint swapKey) payable external whenNotPaused {
