@@ -20,12 +20,17 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     ISwapFactory _factory;      // interface for the factory that created this contract
     uint256 _feeInMille;        // fee in mille
 
-    constructor (address token, uint256 feeInMille) {
+    constructor (address token, uint256 feeInMille, address creator) {
         require (token != address(0), "invalid token");
         require (feeInMille < 1000, "invalid fee");
         _token = IERC20(token);
         _factory = ISwapFactory(msg.sender);
         _feeInMille = feeInMille; // uniswap은 3으로 셋팅해서 사용
+        
+        if (creator != address(0)) {
+            grantRole(DEFAULT_ADMIN_ROLE, creator);
+            grantRole(ADMIN_ROLE, creator);
+        }
     }
 
     function tokenAddress() external view returns (address) {
