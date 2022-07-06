@@ -3,10 +3,11 @@
 pragma solidity 0.8.12;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 import "./MediumAccessControl.sol";
 import "./MediumPausable.sol";
 
-contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
+contract MediumSwapAgentK is MediumAccessControl, Pausable {
 
     IERC20 reserveToken;
 
@@ -20,6 +21,14 @@ contract MediumSwapAgentK is MediumAccessControl, MediumPausable {
         setReserveToken(tokenAddress);
     }
 
+    function pause() public onlyAdmin {
+        _pause();
+    }
+    
+    function unpause() public onlyAdmin {
+        _unpause();
+    }
+    
     function setReserveToken(address tokenAddress) public onlyAdmin {
         require (tokenAddress != address(0), "invalid token address");
         reserveToken = IERC20(tokenAddress);
