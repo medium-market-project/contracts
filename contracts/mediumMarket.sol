@@ -3,12 +3,13 @@
 pragma solidity 0.8.12;
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "./MIP721.sol";
 import "./MediumAccessControl.sol";
 import "./MediumPausable.sol";
 
-contract MediumMarket is MediumAccessControl, MediumPausable {
+contract MediumMarket is MediumAccessControl, Pausable {
     
     using SafeMath for uint;
 
@@ -50,6 +51,14 @@ contract MediumMarket is MediumAccessControl, MediumPausable {
     event RefundBid(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, bool isLazyMint, string metaUri, uint tokenId, uint collectionKey, address originator, address indexed bidder, uint bidPrice);
     event Payment(SaleType saleType, uint indexed marketKey, address seller, address indexed nftContract, uint tokenId, uint collectionKey, address originator, uint price, address[] payoutAddresses, uint[] payoutRatios, uint[] payoutValues);
 
+    function pause() public onlyAdmin {
+        _pause();
+    }
+
+    function unpause() public onlyAdmin {
+        _unpause();
+    }
+    
     //uint[] buyNowSaleInfo = [isLazyMint, tokenId, collectionKey, buyNowPrice, startTime, endTime, metaHash];
     function createBuyNow(uint marketKey, address seller, address nftContract, address originator, uint[7] calldata buyNowSaleInfo, string calldata metaUri, address[] calldata payoutAddresses, uint[] calldata payoutRatios) external whenNotPaused {
         // 판매자의 호출을 기준으로 함
