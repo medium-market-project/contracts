@@ -4,10 +4,10 @@ pragma solidity 0.8.12;
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 import "./MediumAccessControl.sol";
-import "./MediumPausable.sol";
 
-contract MediumMarketAgent is MediumAccessControl, MediumPausable {
+contract MediumMarketAgent is MediumAccessControl, Pausable {
 
     using SafeMath for uint;
     using Counters for Counters.Counter;
@@ -37,6 +37,13 @@ contract MediumMarketAgent is MediumAccessControl, MediumPausable {
     event Payout(uint indexed payIdx, uint indexed marketKey, address indexed buyer, PayType payType, uint unitPrice, uint payoutAmount, address[] payoutAddresses, uint[] payout);
     event RefundAndPayout(uint indexed payIdx, uint indexed marketKey, address indexed buyer, PayType payType, uint unitPrice, uint refundAmount, uint payoutAmount, address[] payoutAddresses, uint[] payout);
 
+    function pause() public onlyAdmin {
+        _pause();
+    }
+
+    function unpause() public onlyAdmin {
+        _unpause();
+    }
 
     function payForBuyNow(uint orderNum, address seller, address nftcontract, uint unitPrice, uint buyAmount) external payable whenNotPaused {
         
