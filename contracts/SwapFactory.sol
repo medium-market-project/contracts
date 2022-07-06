@@ -20,8 +20,7 @@ contract SwapFactory is ISwapFactory, MediumAccessControl {
         require(token != address(0), "invalid token address");
         require(_tokenToExchange[token] == address(0), "exist token");
 
-        SwapExchange exchange = new SwapExchange(token, 3);
-        exchange.grantRole(ADMIN_ROLE, msg.sender);
+        SwapExchange exchange = new SwapExchange(token, 3, msg.sender);
         
         _tokenToExchange[token] = address(exchange);
         _exchangeToToken[address(exchange)] = token;
