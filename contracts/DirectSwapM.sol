@@ -2,8 +2,8 @@
 
 pragma solidity 0.8.12;
 
+import "@openzeppelin/contracts/security/Pausable.sol";
 import "./MediumAccessControl.sol";
-import "./MediumPausable.sol";
 
 contract MediumSwapAgentM is MediumAccessControl, MediumPausable {
 
@@ -11,6 +11,14 @@ contract MediumSwapAgentM is MediumAccessControl, MediumPausable {
     event SwapInM(uint indexed swapKey, address indexed from, uint amount);
     event SwapOutM(uint indexed swapKey, address indexed to, uint amount);
     event SwapRefundM(uint indexed swapKey, address indexed to, uint amount);
+    
+    function pause() public onlyAdmin {
+        _pause();
+    }
+    
+    function unpause() public onlyAdmin {
+        _unpause();
+    }
 
     function withdrawReserve(address to, uint amount) external onlyAdmin {
         require (amount <= address(this).balance, "insufficient reserve");
