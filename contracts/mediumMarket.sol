@@ -7,7 +7,6 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "./MIP721.sol";
 import "./MediumAccessControl.sol";
-import "./MediumPausable.sol";
 
 contract MediumMarket is MediumAccessControl, Pausable {
     
