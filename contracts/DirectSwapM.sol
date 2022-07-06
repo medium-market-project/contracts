@@ -5,7 +5,7 @@ pragma solidity 0.8.12;
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./MediumAccessControl.sol";
 
-contract MediumSwapAgentM is MediumAccessControl, MediumPausable {
+contract MediumSwapAgentM is MediumAccessControl, Pausable {
 
     event WithdrawReserveM(address indexed admin, address indexed to, uint amount);
     event SwapInM(uint indexed swapKey, address indexed from, uint amount);
