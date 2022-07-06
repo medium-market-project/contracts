@@ -4,13 +4,13 @@ pragma solidity ^0.8.12;
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 import "./MediumAccessControl.sol";
-import "./MediumPausable.sol";
 import "./ISwapFactory.sol";
 import "./ISwapExchange.sol";
 
 
-contract SwapExchange is ISwapExchange, MediumAccessControl, MediumPausable {
+contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     using SafeMath for uint256;
 
     uint256 _totalLiquidity;                            // total supplied liquidity amount
@@ -35,6 +35,15 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, MediumPausable {
     function factoryAddress() external view returns (address) {
         return address(_factory);
     }
+    
+    function pause() public onlyAdmin {
+        _pause();
+    }
+
+    function unpause() public onlyAdmin {
+        _unpause();
+    }
+    
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // X*Y=K 계산 기초 함수 [input amount => output amount]
     function calcOutputAmount(uint256 inputAmount, uint256 inputReserve, uint256 outputReserve) public view returns (uint256) {
