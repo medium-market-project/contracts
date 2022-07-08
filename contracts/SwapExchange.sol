@@ -67,9 +67,9 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     }
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // [coin input amount => token output amount]
-    function getTokenToCoinOutputAmount(uint256 coinInputAmount) external view returns (uint256) {
+    function getCoinToTokenOutputAmount(uint256 coinInputAmount) external view returns (uint256) {
         require (coinInputAmount > 0, "invalid coin input amount");
-        return calcOutputAmount(coinInputAmount, _token.balanceOf(address(this)), address(this).balance);
+        return calcOutputAmount(coinInputAmount, address(this).balance, _token.balanceOf(address(this)));
     }
     // [coin output amount => token input amount]
     function getCoinToTokenInputAmount(uint256 coinOutputAmount) external view returns (uint256) {
@@ -77,9 +77,9 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
         return calcInputAmount(coinOutputAmount, address(this).balance, _token.balanceOf(address(this)));
     }
     // [token input amount => coin output amount]
-    function getCoinToTokenOutputAmount(uint256 tokenInputAmount) external view returns (uint256) {
+    function getTokenToCoinOutputAmount(uint256 tokenInputAmount) external view returns (uint256) {
         require (tokenInputAmount > 0, "invalid token input amount");
-        return calcOutputAmount(tokenInputAmount, address(this).balance, _token.balanceOf(address(this)));
+        return calcOutputAmount(tokenInputAmount, _token.balanceOf(address(this)), address(this).balance);
     }
     // [token output amount => coin input amount]
     function getTokenToCoinInputAmount(uint256 tokenOutputAmount) external view returns (uint256) {

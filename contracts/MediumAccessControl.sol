@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract MediumAccessControl is AccessControl {
     
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN");
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     
     constructor() {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
