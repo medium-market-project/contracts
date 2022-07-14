@@ -20,8 +20,8 @@ interface ISwapExchange {
     function getCoinToTokenOutputAmount(uint256 tokenInputAmount) external view returns (uint256);
     function getTokenToCoinInputAmount(uint256 tokenOutputAmount) external view returns (uint256);
 
-    function calcOutputAmount(uint256 inputAmount, uint256 inputReserve, uint256 outputReserve) external view returns (uint256);
-    function calcInputAmount(uint256 outputAmount, uint256 inputReserve, uint256 outputReserve) external view returns (uint256);
+    function calcOutputAmount(uint256 inputAmount, uint256 inputReserve, uint256 outputReserve, uint256 feeInMille) external view returns (uint256);
+    function calcInputAmount(uint256 outputAmount, uint256 inputReserve, uint256 outputReserve, uint256 feeInMille) external view returns (uint256);
 
     function tokenAddress() external view returns (address);
     function factoryAddress() external view returns (address);
