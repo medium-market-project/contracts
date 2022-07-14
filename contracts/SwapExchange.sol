@@ -16,10 +16,10 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     uint256 _totalLiquidity;                            // total supplied liquidity amount
     mapping (address => uint256) _liquidityBalances;    // supplied liquidity map [address to amount]
 
-    IERC20 _token;              // address of the ERC20 token traded on this contract
-    ISwapFactory _factory;      // interface for the factory that created this contract
-    uint256 _feeInMilleCoinToToken;        // fee in mille coin to token
-    uint256 _feeInMilleTokenToCoin;        // fee in mille token to coin
+    IERC20 _token;                      // address of the ERC20 token traded on this contract
+    ISwapFactory _factory;              // interface for the factory that created this contract
+    uint256 _feeInMilleCoinToToken;     // fee in mille coin to token
+    uint256 _feeInMilleTokenToCoin;     // fee in mille token to coin
 
     constructor (address token, uint256 feeInMilleCoinToToken, uint256 feeInMilleTokenToCoin, address creator) {
         require (token != address(0), "invalid token");
@@ -49,6 +49,22 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
 
     function unpause() public onlyAdmin {
         _unpause();
+    }
+    
+    function getFeeInMilleCoinToToken() public view returns (uint256) {
+        return _feeInMilleCoinToToken;
+    }
+    
+    function setFeeInMilleCoinToToken(uint256 feeInMilleCoinToToken) public onlyAdmin {
+        _feeInMilleCoinToToken = feeInMilleCoinToToken;
+    }
+    
+    function getFeeInMilleTokenToCoin() public view returns (uint256) {
+        return _feeInMilleTokenToCoin;
+    }
+    
+    function setFeeInMilleTokenToCoin(uint256 feeInMilleTokenToCoin) public onlyAdmin {
+        _feeInMilleTokenToCoin = feeInMilleTokenToCoin;
     }
     
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
