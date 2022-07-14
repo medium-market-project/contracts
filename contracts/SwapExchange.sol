@@ -18,14 +18,16 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
 
     IERC20 _token;              // address of the ERC20 token traded on this contract
     ISwapFactory _factory;      // interface for the factory that created this contract
-    uint256 _feeInMille;        // fee in mille
+    uint256 _feeInMilleCoinToToken;        // fee in mille coin to token
+    uint256 _feeInMilleTokenToCoin;        // fee in mille token to coin
 
-    constructor (address token, uint256 feeInMille, address creator) {
+    constructor (address token, uint256 feeInMilleCoinToToken, uint256 feeInMilleTokenToCoin, address creator) {
         require (token != address(0), "invalid token");
-        require (feeInMille < 1000, "invalid fee");
+        require (feeInMilleCoinToToken < 1000 && feeInMilleTokenToCoin < 1000, "invalid fee");
         _token = IERC20(token);
         _factory = ISwapFactory(msg.sender);
-        _feeInMille = feeInMille; // uniswap은 3으로 셋팅해서 사용
+        _feeInMilleCoinToToken = feeInMilleCoinToToken;
+        _feeInMilleTokenToCoin = feeInMilleTokenToCoin;
         
         if (creator != address(0)) {
             grantRole(DEFAULT_ADMIN_ROLE, creator);
@@ -51,40 +53,40 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // X*Y=K 계산 기초 함수 [input amount => output amount]
-    function calcOutputAmount(uint256 inputAmount, uint256 inputReserve, uint256 outputReserve) public view returns (uint256) {
+    function calcOutputAmount(uint256 inputAmount, uint256 inputReserve, uint256 outputReserve, uint256 feeInMille) public view returns (uint256) {
         require (inputReserve > 0 && outputReserve > 0, "invalid input/output reserve value");
-        uint256 inputAmountWithFee = inputAmount.mul(1000-_feeInMille);
+        uint256 inputAmountWithFee = inputAmount.mul(1000-feeInMille);
         uint256 numerator = inputAmountWithFee.mul(outputReserve);
         uint256 denominator = inputReserve.mul(1000).add(inputAmountWithFee);
         return numerator.div(denominator);
     }
     // X*Y=K 계산 기초 함수 [output amount => input amount]
-    function calcInputAmount(uint256 outputAmount, uint256 inputReserve, uint256 outputReserve) public view returns (uint256) {
+    function calcInputAmount(uint256 outputAmount, uint256 inputReserve, uint256 outputReserve, uint256 feeInMille) public view returns (uint256) {
         require (inputReserve > 0 && outputReserve > 0, "invalid input/output reserve value");
         uint256 numerator = inputReserve.mul(outputAmount).mul(1000);
-        uint256 denominator = (outputReserve.sub(outputAmount)).mul(1000-_feeInMille);
+        uint256 denominator = (outputReserve.sub(outputAmount)).mul(1000-feeInMille);
         return (numerator.div(denominator)).add(1);
     }
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // [coin input amount => token output amount]
     function getCoinToTokenOutputAmount(uint256 coinInputAmount) external view returns (uint256) {
         require (coinInputAmount > 0, "invalid coin input amount");
-        return calcOutputAmount(coinInputAmount, address(this).balance, _token.balanceOf(address(this)));
+        return calcOutputAmount(coinInputAmount, address(this).balance, _token.balanceOf(address(this)), _feeInMilleCoinToToken);
     }
     // [coin output amount => token input amount]
     function getCoinToTokenInputAmount(uint256 tokenOutputAmount) external view returns (uint256) {
         require (tokenOutputAmount > 0, "invalid coin output amount");
-        return calcInputAmount(tokenOutputAmount, address(this).balance, _token.balanceOf(address(this)));
+        return calcInputAmount(tokenOutputAmount, address(this).balance, _token.balanceOf(address(this)), _feeInMilleCoinToToken);
     }
     // [token input amount => coin output amount]
     function getTokenToCoinOutputAmount(uint256 tokenInputAmount) external view returns (uint256) {
         require (tokenInputAmount > 0, "invalid token input amount");
-        return calcOutputAmount(tokenInputAmount, _token.balanceOf(address(this)), address(this).balance);
+        return calcOutputAmount(tokenInputAmount, _token.balanceOf(address(this)), address(this).balance, _feeInMilleTokenToCoin);
     }
     // [token output amount => coin input amount]
     function getTokenToCoinInputAmount(uint256 coinOutputAmount) external view returns (uint256) {
         require (coinOutputAmount > 0, "invalid token output amount");
-        return calcInputAmount(coinOutputAmount, _token.balanceOf(address(this)), address(this).balance);
+        return calcInputAmount(coinOutputAmount, _token.balanceOf(address(this)), address(this).balance, _feeInMilleTokenToCoin);
     }
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -111,7 +113,7 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     // order: coin sell [coin sell in => token buy out] - condition: msg.value(=coinInputAmout) transfer done
     function _coinToTokenInput(uint256 coinInputAmount, uint256 minTokenAmount, uint256 deadline, address buyer, address recipient) private returns (uint256) {
         require (deadline >= block.timestamp && coinInputAmount > 0, "invalid input param value");
-        uint256 tokenOutputAmount = calcOutputAmount(coinInputAmount, address(this).balance.sub(coinInputAmount), _token.balanceOf(address(this)));
+        uint256 tokenOutputAmount = calcOutputAmount(coinInputAmount, address(this).balance.sub(coinInputAmount), _token.balanceOf(address(this)), _feeInMilleCoinToToken);
         require (tokenOutputAmount >= minTokenAmount, "must tokenOutAmount >= minTokenAmount");
         require (_token.transfer(recipient, tokenOutputAmount), "token transfer fail");
         emit TokenPurchase(buyer, coinInputAmount, tokenOutputAmount);
@@ -120,7 +122,7 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     // order:token buy [coin sell in => token buy out] - condition: msg.value(=paidCoinAmount) transfer done
     function _coinToTokenOutput(uint256 tokenOutputAmount, uint256 paidCoinAmount, uint256 deadline, address buyer, address recipient) private returns (uint256) {
         require (deadline >= block.timestamp && tokenOutputAmount > 0 && paidCoinAmount > 0, "invalid input param value");
-        uint256 coinInputAmount = calcInputAmount(tokenOutputAmount, address(this).balance.sub(paidCoinAmount), _token.balanceOf(address(this)));
+        uint256 coinInputAmount = calcInputAmount(tokenOutputAmount, address(this).balance.sub(paidCoinAmount), _token.balanceOf(address(this)), _feeInMilleCoinToToken);
         require (paidCoinAmount >= coinInputAmount, "must coinInputAmount <= paidCoinAmount");
         uint256 coinRefundAmount = paidCoinAmount.sub(coinInputAmount);
         if (coinRefundAmount > 0) {
@@ -133,7 +135,7 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     // order:token sell [token sell in => coin buy out] - condition: approve done
     function _tokenToCoinInput(uint256 tokenInputAmount, uint256 minCoinAmount, uint256 deadline, address buyer, address recipient) private returns (uint256) {
         require (deadline >= block.timestamp && tokenInputAmount > 0);
-        uint256 coinOutputAmount = calcOutputAmount(tokenInputAmount, _token.balanceOf(address(this)), address(this).balance);
+        uint256 coinOutputAmount = calcOutputAmount(tokenInputAmount, _token.balanceOf(address(this)), address(this).balance, _feeInMilleTokenToCoin);
         require (coinOutputAmount >= minCoinAmount, "must coinOutputAmount >= minCoinAmount");
         require (_token.transferFrom(buyer, address(this), tokenInputAmount), "token transferFrom fail");
         payable(recipient).transfer(coinOutputAmount);
@@ -143,7 +145,7 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     // order:coin buy [token sell in => coin buy out] - condition: approve done
     function _tokenToCoinOutput(uint256 coinOutputAmount, uint256 maxTokenAmount, uint256 deadline, address buyer, address recipient) private returns (uint256) {
         require (deadline >= block.timestamp && coinOutputAmount > 0, "invalid input param value");
-        uint256 tokenInputAmount = calcInputAmount(coinOutputAmount, _token.balanceOf(address(this)), address(this).balance);
+        uint256 tokenInputAmount = calcInputAmount(coinOutputAmount, _token.balanceOf(address(this)), address(this).balance, _feeInMilleTokenToCoin);
         require (tokenInputAmount <= maxTokenAmount, "must tokenInputAmount <= maxTokenAmount");
         require (_token.transferFrom(buyer, address(this), tokenInputAmount), "token transferFrom fail");
         payable(recipient).transfer(coinOutputAmount);
