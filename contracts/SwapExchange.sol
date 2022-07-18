@@ -69,7 +69,7 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
     
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // X*Y=K 계산 기초 함수 [input amount => output amount]
-    function calcOutputAmount(uint256 inputAmount, uint256 inputReserve, uint256 outputReserve, uint256 feeInMille) public view returns (uint256) {
+    function calcOutputAmount(uint256 inputAmount, uint256 inputReserve, uint256 outputReserve, uint256 feeInMille) public pure returns (uint256) {
         require (inputReserve > 0 && outputReserve > 0, "invalid input/output reserve value");
         uint256 inputAmountWithFee = inputAmount.mul(1000-feeInMille);
         uint256 numerator = inputAmountWithFee.mul(outputReserve);
@@ -77,7 +77,7 @@ contract SwapExchange is ISwapExchange, MediumAccessControl, Pausable {
         return numerator.div(denominator);
     }
     // X*Y=K 계산 기초 함수 [output amount => input amount]
-    function calcInputAmount(uint256 outputAmount, uint256 inputReserve, uint256 outputReserve, uint256 feeInMille) public view returns (uint256) {
+    function calcInputAmount(uint256 outputAmount, uint256 inputReserve, uint256 outputReserve, uint256 feeInMille) public pure returns (uint256) {
         require (inputReserve > 0 && outputReserve > 0, "invalid input/output reserve value");
         uint256 numerator = inputReserve.mul(outputAmount).mul(1000);
         uint256 denominator = (outputReserve.sub(outputAmount)).mul(1000-feeInMille);
