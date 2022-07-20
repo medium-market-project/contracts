@@ -20,6 +20,7 @@ contract MIP721 is ERC721, ERC721Enumerable, ERC721URIStorage, Pausable, AccessC
     string private _baseTokenURI;
 
     event BulkMint(address indexed to, uint256 uriCount, string[] uris, uint256[] tokenIds);
+    event MergeMint(address indexed to, uint256 tokenCount, uint256[] tokenIds, uint256 newTokenId, string newUri);
     event BulkTransfer(address indexed from, address indexed to, uint256 tokenCount, uint256[] tokenIds);
 
     constructor(
@@ -64,6 +65,20 @@ contract MIP721 is ERC721, ERC721Enumerable, ERC721URIStorage, Pausable, AccessC
             mint(to, uris[i]);
         }
         emit BulkMint(to, uris.length, uris, tokenIds);
+    }
+    
+    function mergeMint(uint256[] memory tokenIds, string memory newUri) public returns (uint256) {
+        require (tokenIds.length > 0, "tokenIds empty");
+        for (uint i = 0; i < tokenIds.length; i++) {
+            require(ownerOf(tokenIds[i]) == _msgSender(), "MIP721: is not token owner");
+            _burn(tokenIds[i]);
+        }
+        uint256 newTokenId = _tokenIdCounter.current();
+        _tokenIdCounter.increment();
+        _safeMint(_msgSender(), newTokenId);
+        _setTokenURI(newTokenId, newUri);
+        emit MergeMint(_msgSender(), tokenIds.length, tokenIds, newTokenId, newUri);
+        return newTokenId;
     }
 
     function bulkTransferFrom(address from, address to, uint256[] memory tokenIds) external {
