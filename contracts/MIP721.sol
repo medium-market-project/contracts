@@ -103,12 +103,12 @@ contract MIP721 is ERC721, ERC721Enumerable, ERC721URIStorage, Pausable, AccessC
     }
 
     function snapshot(uint256 _id, uint256 _hash) public override {
-        require(ownerOf(_id) == _msgSender() || hasRole(ADMIN_ROLE, _msgSender()), "not owner or admin");
+        require(hasRole(ADMIN_ROLE, _msgSender()), "not admin");
         MIP721Snapshot._snapshot(_id, _hash);
     }
     
     function removeSnapshot(uint256 _id) public {
-        require(ownerOf(_id) == _msgSender() || hasRole(ADMIN_ROLE, _msgSender()), "not owner or admin");
+        require(hasRole(ADMIN_ROLE, _msgSender()), "not admin");
         MIP721Snapshot._snapshot(_id, 0x0);
     }
 
