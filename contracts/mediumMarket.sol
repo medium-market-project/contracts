@@ -201,6 +201,11 @@ contract MediumMarket is MediumAccessControl, Pausable {
         _acceptBid(marketKey, metaHash);
     }
     
+    function checkOnSale(uint marketKey) public view returns (bool) {
+        SaleDocument memory doc = _salesBook[marketKey];
+        return doc.onSale;
+    }
+    
     function _acceptBid(uint marketKey, uint metaHash) internal {
         // 마켓시스템 호출. 시간이 되면 자동으로 낙찰처리. 또는 경매에서 즉시구매가가 되었을때 실행.
 
