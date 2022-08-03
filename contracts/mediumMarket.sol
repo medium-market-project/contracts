@@ -171,6 +171,7 @@ contract MediumMarket is MediumAccessControl, Pausable {
         require (doc.startTime <= block.timestamp && block.timestamp <= doc.endTime, "not on sale time");
         require (price == msg.value, "transfered value must match the price");
         require (doc.metaHash == metaHash, "meta hash changed");
+        require (msg.sender == tx.origin, "bidder must be EOA");
 
         if (doc.bidder == address(0)) {
             require (doc.startPrice <= price, "transfered value must be equal or greater than the start price");
