@@ -121,8 +121,8 @@ contract MIP721 is ERC721, ERC721Enumerable, ERC721URIStorage, Pausable, AccessC
             }
             uint returnCount = endIdx - startIdx + 1;
             uint256[] memory tokenList = new uint256[](returnCount);
-            for (uint256 i=startIdx; i < returnCount ; i++){
-                tokenList[i] = tokenOfOwnerByIndex(owner, i);
+            for (uint256 i=0; i < returnCount ; i++){
+                tokenList[i] = tokenOfOwnerByIndex(owner, startIdx+i);
             }
             return tokenList;
         } else {
