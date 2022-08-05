@@ -7,10 +7,15 @@ import "./MediumAccessControl.sol";
 
 contract MediumSwapAgentM is MediumAccessControl, Pausable {
 
+    event ReceiveReserveM(address indexed sender, uint amount);
     event WithdrawReserveM(address indexed admin, address indexed to, uint amount);
     event SwapInM(uint indexed swapKey, address indexed from, uint amount);
     event SwapOutM(uint indexed swapKey, address indexed to, uint amount);
     event SwapRefundM(uint indexed swapKey, address indexed to, uint amount);
+    
+    receive() external payable {
+        emit ReceiveReserveM(msg.sender, msg.value);
+    }
     
     function pause() public onlyAdmin {
         _pause();
