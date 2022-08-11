@@ -144,10 +144,6 @@ contract MediumMarket is MediumAccessControl, Pausable {
         require (doc.buyNowPrice == price && price == msg.value, "transfered value must match the price");
         require (doc.metaHash == metaHash, "meta hash changed");
 
-        if (doc.metaHash > 0 && !doc.isLazyMint) {
-            _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
-        }
-
         if (doc.isLazyMint) {
             doc.tokenId = _callNFTMint(doc.nftContract, msg.sender, doc.metaUri);
         } else {
@@ -215,10 +211,6 @@ contract MediumMarket is MediumAccessControl, Pausable {
         require (doc.saleType == SaleType.AUCTION, "not auction type");
         require (doc.metaHash == metaHash, "meta hash changed");
 
-        if (doc.metaHash > 0 && !doc.isLazyMint) {
-            _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
-        }
-
         if (doc.bidder != address(0)) {
             if (doc.isLazyMint) {
                 doc.tokenId = _callNFTMint(doc.nftContract, doc.bidder, doc.metaUri);
@@ -246,10 +238,6 @@ contract MediumMarket is MediumAccessControl, Pausable {
         require (doc.isLazyMint || (doc.seller == _getTokenOwner(doc.nftContract, doc.tokenId)), "not token owner");
         require (_isTokenApprovedForAll(doc.nftContract, doc.seller), "not approved");
 
-        if (doc.metaHash != 0 && !doc.isLazyMint) {
-            _callNFTSaveSnapsot(doc.nftContract, doc.tokenId, doc.metaHash);
-        }
-        
         doc.onSale = true;
         _salesBook[doc.marketKey] = doc;
 
@@ -265,10 +253,6 @@ contract MediumMarket is MediumAccessControl, Pausable {
                 _refundBid(doc.bidder, doc.bidPrice);
                 
                 emit RefundBid(doc.saleType, doc.marketKey, doc.seller, doc.nftContract, doc.isLazyMint, doc.metaUri, doc.tokenId, doc.collectionKey, doc.originator, doc.bidder, doc.bidPrice);
-            }
-
-            if (doc.metaHash != 0) {
-                _callNFTRemoveSnapsot(doc.nftContract, doc.tokenId);
             }
         }
         delete(_salesBook[marketKey]);
@@ -325,15 +309,5 @@ contract MediumMarket is MediumAccessControl, Pausable {
    function _callNFTMint(address nftContract, address to, string memory uri) internal returns (uint) {
         MIP721 mip721 = MIP721(nftContract);
         return mip721.mint(to, uri);
-    }
-
-    function _callNFTSaveSnapsot(address nftContract, uint tokenId, uint hashValue) internal {
-        MIP721 mip721 = MIP721(nftContract);
-        mip721.snapshot(tokenId, hashValue);
-    }
-
-    function _callNFTRemoveSnapsot(address nftContract, uint tokenId) internal {
-        MIP721 mip721 = MIP721(nftContract);
-        mip721.removeSnapshot(tokenId);
     }
 }
